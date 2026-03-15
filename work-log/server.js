@@ -3,12 +3,47 @@ const Database = require('better-sqlite3');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const cookieSession = require('cookie-session');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ========== Security Headers ==========
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      workerSrc: ["'self'", "blob:"],
+      connectSrc: ["'self'"]
+    }
+  }
+}));
+
+// ========== Rate Limiting ==========
+// Login/Register: max 10 attempts per 15 minutes per IP
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'คำขอมากเกินไป กรุณารอ 15 นาที' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// General API: max 100 requests per minute per IP
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  message: { error: 'คำขอมากเกินไป กรุณารอสักครู่' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
@@ -76,13 +111,19 @@ try { db.exec("ALTER TABLE work_logs ADD COLUMN system_type TEXT DEFAULT ''"); }
 try { db.exec("ALTER TABLE work_logs ADD COLUMN images TEXT DEFAULT '[]'"); } catch {}
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(cookieSession({
   name: 'session',
   keys: [process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex')],
-  maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
+  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+  httpOnly: true,
+  sameSite: 'lax',
+  secure: process.env.NODE_ENV === 'production'
 }));
+
+// Apply API rate limiter to all /api routes
+app.use('/api/', apiLimiter);
 
 // Auth middleware
 function requireAuth(req, res, next) {
@@ -90,13 +131,22 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// XSS sanitize helper
+function sanitize(str) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/[<>]/g, '').trim();
+}
+
 // ========== AUTH API ==========
 
 // Register
-app.post('/api/auth/register', (req, res) => {
-  const { name, email, password } = req.body;
+app.post('/api/auth/register', authLimiter, (req, res) => {
+  const name = sanitize(req.body.name);
+  const email = sanitize(req.body.email);
+  const password = req.body.password;
   if (!name || !email || !password) return res.status(400).json({ error: 'กรุณากรอกข้อมูลให้ครบ' });
-  if (password.length < 4) return res.status(400).json({ error: 'รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร' });
+  if (password.length < 6) return res.status(400).json({ error: 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'รูปแบบอีเมลไม่ถูกต้อง' });
 
   const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
   if (existing) return res.status(400).json({ error: 'อีเมลนี้ถูกใช้แล้ว' });
@@ -120,7 +170,7 @@ app.post('/api/auth/register', (req, res) => {
 });
 
 // Login
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', authLimiter, (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ error: 'กรุณากรอกอีเมลและรหัสผ่าน' });
 
@@ -221,13 +271,20 @@ app.get('/api/summary', requireAuth, (req, res) => {
 });
 
 app.post('/api/logs', requireAuth, (req, res) => {
-  const { date, channel, topic, reporter, detail, status, images, system_type } = req.body;
+  const date = sanitize(req.body.date);
+  const channel = sanitize(req.body.channel);
+  const topic = sanitize(req.body.topic);
+  const reporter = sanitize(req.body.reporter);
+  const detail = sanitize(req.body.detail);
+  const status = sanitize(req.body.status);
+  const system_type = sanitize(req.body.system_type);
+  const images = req.body.images;
   if (!date || !channel || !topic) return res.status(400).json({ error: 'กรุณากรอก วันที่ ช่องทาง และเรื่อง' });
 
   const result = db.prepare(`
     INSERT INTO work_logs (user_id, date, channel, system_type, topic, reporter, detail, status, images)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.session.userId, date, channel, system_type || '', topic, reporter || '', detail || '', status || 'รอดำเนินการ', JSON.stringify(images || []));
+  `).run(req.session.userId, date, channel, system_type, topic, reporter, detail, status || 'รอดำเนินการ', JSON.stringify(images || []));
 
   const row = db.prepare('SELECT * FROM work_logs WHERE id = ?').get(result.lastInsertRowid);
   try { row.images = JSON.parse(row.images); } catch { row.images = []; }
