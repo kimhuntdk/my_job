@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Work Log">
+  <meta name="theme-color" content="#1a73e8">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="apple-touch-icon" href="/icons/icon-192.svg">
+  <title>Work Log - บันทึกภาระงาน</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>📋 บันทึกภาระงาน</h1>
+      <p class="subtitle">ระบบบันทึกภาระงานประจำวัน</p>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="tabs">
+      <button class="tab active" data-tab="record">📝 บันทึกงาน</button>
+      <button class="tab" data-tab="list">📄 รายการงาน</button>
+      <button class="tab" data-tab="summary">📊 สรุปงาน</button>
+    </nav>
+
+    <!-- Tab: Record -->
+    <section id="tab-record" class="tab-content active">
+      <!-- Image Upload & OCR -->
+      <div class="ocr-section">
+        <h3>📷 แนบภาพหลักฐาน + อ่านข้อความ</h3>
+        <p class="ocr-hint">อัปโหลดภาพจากอีเมล เฟซบุ๊ก LINE ฯลฯ ระบบจะอ่านข้อความให้ แก้ไขได้ก่อนใช้</p>
+        <input type="file" id="file-input" accept="image/*" multiple hidden>
+        <div class="upload-zone" id="upload-zone">
+          <div class="upload-placeholder" id="upload-placeholder">
+            <span class="upload-icon">📁</span>
+            <p>คลิกเพื่อเลือกภาพ หรือลากไฟล์มาวางที่นี่</p>
+            <p class="upload-formats">รองรับ: JPG, PNG, GIF, WEBP (สูงสุด 10MB, แนบได้ 5 ภาพ)</p>
+          </div>
+        </div>
+        <div id="image-preview-list" class="image-preview-list"></div>
+        <div id="ocr-status" class="ocr-status" style="display:none">
+          <div class="spinner"></div>
+          <span id="ocr-status-text">กำลังอ่านข้อความจากภาพ...</span>
+        </div>
+        <div id="ocr-result" style="display:none"></div>
+      </div>
+
+      <form id="log-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label>วันที่ <span class="required">*</span></label>
+            <input type="date" id="log-date" required>
+          </div>
+          <div class="form-group">
+            <label>ช่องทาง <span class="required">*</span></label>
+            <select id="log-channel" required>
+              <option value="">-- เลือกช่องทาง --</option>
+              <option value="โทรศัพท์">📞 โทรศัพท์</option>
+              <option value="อีเมล">📧 อีเมล</option>
+              <option value="เฟซบุ๊ก">💬 เฟซบุ๊ก</option>
+              <option value="LINE">💚 LINE</option>
+              <option value="Walk-in">🚶 Walk-in</option>
+              <option value="อื่นๆ">📌 อื่นๆ</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>ประเภทระบบ <span class="required">*</span></label>
+            <select id="log-system" required>
+              <option value="">-- เลือกระบบ --</option>
+              <option value="ระบบสมัครเรียนไทย">🇹🇭 ระบบสมัครเรียนไทย</option>
+              <option value="ระบบสมัครเรียนต่างชาติ">🌏 ระบบสมัครเรียนต่างชาติ</option>
+              <option value="ระบบคอร์สอบรม">📚 ระบบคอร์สอบรม</option>
+              <option value="ระบบสอบภาษาอังกฤษ">🔤 ระบบสอบภาษาอังกฤษ</option>
+              <option value="ระบบ e-Form">📝 ระบบ e-Form</option>
+              <option value="ระบบ Grad Portal">🎓 ระบบ Grad Portal</option>
+              <option value="ระบบ iThesis">📖 ระบบ iThesis</option>
+              <option value="ระบบ Turnitin">🔍 ระบบ Turnitin</option>
+              <option value="อื่นๆ">📌 อื่นๆ</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>ผู้แจ้ง</label>
+            <input type="text" id="log-reporter" placeholder="ชื่อผู้ติดต่อ">
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>เรื่อง <span class="required">*</span></label>
+            <input type="text" id="log-topic" placeholder="เช่น สอบถามการใช้งานระบบ, แจ้งปัญหา..." required>
+            <div class="quick-tags" id="quick-topics">
+              <span class="quick-tag" data-value="สอบถามการใช้งาน">สอบถามการใช้งาน</span>
+              <span class="quick-tag" data-value="แจ้งปัญหา">แจ้งปัญหา</span>
+              <span class="quick-tag" data-value="ขอรีเซ็ตรหัสผ่าน">รีเซ็ตรหัสผ่าน</span>
+              <span class="quick-tag" data-value="แจ้งซ่อม/แก้ไข">แจ้งซ่อม/แก้ไข</span>
+              <span class="quick-tag" data-value="ขอข้อมูล/เอกสาร">ขอข้อมูล/เอกสาร</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>รายละเอียด / หมายเหตุ</label>
+          <textarea id="log-detail" rows="3" placeholder="รายละเอียดเพิ่มเติม..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label>สถานะ</label>
+          <select id="log-status">
+            <option value="รอดำเนินการ">🟡 รอดำเนินการ</option>
+            <option value="กำลังดำเนินการ">🔵 กำลังดำเนินการ</option>
+            <option value="เสร็จแล้ว">🟢 เสร็จแล้ว</option>
+          </select>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="btn-submit">💾 บันทึก</button>
+          <button type="button" class="btn btn-secondary" id="btn-cancel" style="display:none">ยกเลิก</button>
+        </div>
+      </form>
+
+      <!-- Today's logs -->
+      <div class="today-section">
+        <h2>📅 งานวันนี้</h2>
+        <div id="today-logs"></div>
+      </div>
+    </section>
+
+    <!-- Tab: List -->
+    <section id="tab-list" class="tab-content">
+      <div class="filter-bar">
+        <div class="form-group">
+          <label>วันที่</label>
+          <input type="date" id="filter-date">
+        </div>
+        <div class="form-group">
+          <label>เดือน</label>
+          <input type="month" id="filter-month">
+        </div>
+        <div class="form-group">
+          <label>ช่องทาง</label>
+          <select id="filter-channel">
+            <option value="">ทั้งหมด</option>
+            <option value="โทรศัพท์">โทรศัพท์</option>
+            <option value="อีเมล">อีเมล</option>
+            <option value="เฟซบุ๊ก">เฟซบุ๊ก</option>
+            <option value="LINE">LINE</option>
+            <option value="Walk-in">Walk-in</option>
+            <option value="อื่นๆ">อื่นๆ</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>ประเภทระบบ</label>
+          <select id="filter-system">
+            <option value="">ทั้งหมด</option>
+            <option value="ระบบสมัครเรียนไทย">ระบบสมัครเรียนไทย</option>
+            <option value="ระบบสมัครเรียนต่างชาติ">ระบบสมัครเรียนต่างชาติ</option>
+            <option value="ระบบคอร์สอบรม">ระบบคอร์สอบรม</option>
+            <option value="ระบบสอบภาษาอังกฤษ">ระบบสอบภาษาอังกฤษ</option>
+            <option value="ระบบ e-Form">ระบบ e-Form</option>
+            <option value="ระบบ Grad Portal">ระบบ Grad Portal</option>
+            <option value="ระบบ iThesis">ระบบ iThesis</option>
+            <option value="ระบบ Turnitin">ระบบ Turnitin</option>
+            <option value="อื่นๆ">อื่นๆ</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>สถานะ</label>
+          <select id="filter-status">
+            <option value="">ทั้งหมด</option>
+            <option value="รอดำเนินการ">รอดำเนินการ</option>
+            <option value="กำลังดำเนินการ">กำลังดำเนินการ</option>
+            <option value="เสร็จแล้ว">เสร็จแล้ว</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" id="btn-filter">🔍 ค้นหา</button>
+        <button class="btn btn-secondary" id="btn-clear-filter">ล้าง</button>
+      </div>
+      <div id="log-list"></div>
+    </section>
+
+    <!-- Tab: Summary -->
+    <section id="tab-summary" class="tab-content">
+      <div class="summary-controls">
+        <button class="btn btn-primary active" id="btn-summary-daily">📅 สรุปรายวัน</button>
+        <button class="btn btn-primary" id="btn-summary-monthly">📆 สรุปรายเดือน</button>
+      </div>
+      <div class="summary-filter">
+        <div class="form-group" id="summary-date-group">
+          <label>เลือกวันที่</label>
+          <input type="date" id="summary-date">
+        </div>
+        <div class="form-group" id="summary-month-group" style="display:none">
+          <label>เลือกเดือน</label>
+          <input type="month" id="summary-month">
+        </div>
+        <button class="btn btn-primary" id="btn-load-summary">📊 ดูสรุป</button>
+      </div>
+      <div id="summary-content"></div>
+    </section>
+  </div>
+
+  <!-- Image Modal -->
+  <div id="image-modal" class="modal" style="display:none">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <button class="modal-close">&times;</button>
+      <img id="modal-image" src="" alt="">
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js');
+    }
+  </script>
+</body>
+</html>

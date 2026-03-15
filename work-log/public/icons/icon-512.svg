@@ -1,0 +1,5 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='512' height='512' viewBox='0 0 512 512'>
+  <rect width='512' height='512' rx='76.8' fill='#1a73e8'/>
+  <text x='50%' y='38%' text-anchor='middle' font-size='204.8' dominant-baseline='middle'>📋</text>
+  <text x='50%' y='72%' text-anchor='middle' font-size='61.44' fill='white' font-family='Arial' font-weight='bold' dominant-baseline='middle'>Work Log</text>
+</svg>

@@ -1,0 +1,6 @@
+node_modules/
+worklog.db
+worklog.db-shm
+worklog.db-wal
+public/uploads/*
+!public/uploads/.gitkeep
