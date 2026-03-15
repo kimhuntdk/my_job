@@ -298,6 +298,33 @@ textarea {
   background: #c62828;
 }
 
+.btn-success {
+  background: linear-gradient(135deg, #43a047, #2e7d32);
+  color: #fff;
+  text-decoration: none;
+}
+
+.btn-success:hover {
+  background: linear-gradient(135deg, #2e7d32, #1b5e20);
+}
+
+.export-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, #e8f5e9, #c8e6c9);
+  border-radius: 12px;
+  margin-bottom: 16px;
+  border: 1px solid #a5d6a7;
+}
+
+.export-label {
+  font-weight: 600;
+  color: #2e7d32;
+  font-size: 0.95rem;
+}
+
 .btn-sm {
   padding: 6px 14px;
   font-size: 0.85rem;

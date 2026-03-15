@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const XLSX = require('xlsx');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -311,6 +312,49 @@ app.delete('/api/logs/:id', requireAuth, (req, res) => {
   }
   db.prepare('DELETE FROM work_logs WHERE id=? AND user_id=?').run(req.params.id, req.session.userId);
   res.json({ success: true });
+});
+
+// ========== EXPORT API ==========
+
+app.get('/api/export/:format', requireAuth, (req, res) => {
+  const format = req.params.format;
+  if (!['xlsx', 'csv'].includes(format)) return res.status(400).json({ error: 'รองรับเฉพาะ xlsx และ csv' });
+
+  const rows = db.prepare('SELECT date, channel, system_type, topic, reporter, detail, status, created_at FROM work_logs WHERE user_id = ? ORDER BY date DESC, created_at DESC').all(req.session.userId);
+
+  const data = rows.map(r => ({
+    'วันที่': r.date,
+    'ช่องทาง': r.channel,
+    'ประเภทระบบ': r.system_type || '',
+    'เรื่อง': r.topic,
+    'ผู้แจ้ง': r.reporter || '',
+    'รายละเอียด': r.detail || '',
+    'สถานะ': r.status,
+    'บันทึกเมื่อ': r.created_at
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Work Log');
+
+  // Auto column widths
+  const colWidths = Object.keys(data[0] || {}).map(key => ({
+    wch: Math.max(key.length * 2, ...data.map(r => String(r[key] || '').length).slice(0, 50)) + 2
+  }));
+  ws['!cols'] = colWidths;
+
+  if (format === 'xlsx') {
+    const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Disposition', 'attachment; filename=work-log-export.xlsx');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.send(buf);
+  } else {
+    const csvData = XLSX.utils.sheet_to_csv(ws);
+    const bom = '\uFEFF';
+    res.setHeader('Content-Disposition', 'attachment; filename=work-log-export.csv');
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.send(bom + csvData);
+  }
 });
 
 app.listen(PORT, () => console.log(`🚀 Work Log app running at http://localhost:${PORT}`));
