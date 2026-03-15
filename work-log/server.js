@@ -20,8 +20,9 @@ app.use(helmet({
       scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
       styleSrc: ["'self'", "'unsafe-inline'"],
       imgSrc: ["'self'", "data:", "blob:"],
-      workerSrc: ["'self'", "blob:"],
-      connectSrc: ["'self'"]
+      workerSrc: ["'self'", "blob:", "https://cdn.jsdelivr.net"],
+      connectSrc: ["'self'", "https://cdn.jsdelivr.net", "https://tessdata.projectnaptha.com"],
+      childSrc: ["'self'", "blob:"]
     }
   }
 }));
