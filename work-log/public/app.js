@@ -172,13 +172,37 @@ function initUpload() {
   zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
 }
 
+// Compress image before upload (max 1280px, quality 0.7)
+function compressImage(file, maxWidth = 1280, quality = 0.7) {
+  return new Promise((resolve) => {
+    // If file is already small (<500KB), skip compression
+    if (file.size < 500 * 1024) return resolve(file);
+    const img = new Image();
+    img.onload = () => {
+      let w = img.width, h = img.height;
+      if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      canvas.toBlob(blob => {
+        const compressed = new File([blob], file.name, { type: 'image/jpeg' });
+        console.log(`📦 ย่อ: ${(file.size/1024).toFixed(0)}KB → ${(compressed.size/1024).toFixed(0)}KB`);
+        resolve(compressed);
+      }, 'image/jpeg', quality);
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+
 async function handleFiles(files) {
   let firstFile = null;
   for (const file of files) {
     if (!file.type.startsWith('image/')) continue;
     if (!firstFile) firstFile = file;
+    const compressed = await compressImage(file);
     const formData = new FormData();
-    formData.append('images', file);
+    formData.append('images', compressed);
     try {
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
       const data = await res.json();
