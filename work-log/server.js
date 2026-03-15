@@ -1,5 +1,5 @@
 const express = require('express');
-const Database = require('better-sqlite3');
+const { Pool } = require('pg');
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const cookieSession = require('cookie-session');
@@ -12,6 +12,54 @@ const XLSX = require('xlsx');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ========== PostgreSQL ==========
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+});
+
+async function initDB() {
+  const client = await pool.connect();
+  try {
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS categories (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        name TEXT NOT NULL,
+        icon TEXT DEFAULT '📌'
+      )
+    `);
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS work_logs (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        date TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        system_type TEXT DEFAULT '',
+        topic TEXT NOT NULL,
+        reporter TEXT DEFAULT '',
+        detail TEXT DEFAULT '',
+        status TEXT DEFAULT 'รอดำเนินการ',
+        images JSONB DEFAULT '[]',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )
+    `);
+    console.log('✅ Database tables ready');
+  } finally {
+    client.release();
+  }
+}
 
 // ========== Security Headers ==========
 app.use(helmet({
@@ -29,7 +77,6 @@ app.use(helmet({
 }));
 
 // ========== Rate Limiting ==========
-// Login/Register: max 10 attempts per 15 minutes per IP
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -38,7 +85,6 @@ const authLimiter = rateLimit({
   legacyHeaders: false
 });
 
-// General API: max 100 requests per minute per IP
 const apiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 100,
@@ -69,62 +115,18 @@ const upload = multer({
   }
 });
 
-// Database setup
-const db = new Database(path.join(__dirname, 'worklog.db'));
-db.pragma('journal_mode = WAL');
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    created_at TEXT DEFAULT (datetime('now','localtime'))
-  );
-
-  CREATE TABLE IF NOT EXISTS categories (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    name TEXT NOT NULL,
-    icon TEXT DEFAULT '📌',
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  );
-
-  CREATE TABLE IF NOT EXISTS work_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    date TEXT NOT NULL,
-    channel TEXT NOT NULL,
-    system_type TEXT DEFAULT '',
-    topic TEXT NOT NULL,
-    reporter TEXT DEFAULT '',
-    detail TEXT DEFAULT '',
-    status TEXT DEFAULT 'รอดำเนินการ',
-    images TEXT DEFAULT '[]',
-    created_at TEXT DEFAULT (datetime('now','localtime')),
-    updated_at TEXT DEFAULT (datetime('now','localtime')),
-    FOREIGN KEY (user_id) REFERENCES users(id)
-  )
-`);
-
-// Add columns for existing databases
-try { db.exec("ALTER TABLE work_logs ADD COLUMN user_id INTEGER DEFAULT 0"); } catch {}
-try { db.exec("ALTER TABLE work_logs ADD COLUMN system_type TEXT DEFAULT ''"); } catch {}
-try { db.exec("ALTER TABLE work_logs ADD COLUMN images TEXT DEFAULT '[]'"); } catch {}
-
 // Middleware
 app.use(express.json({ limit: '1mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(cookieSession({
   name: 'session',
   keys: [process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex')],
-  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+  maxAge: 30 * 24 * 60 * 60 * 1000,
   httpOnly: true,
   sameSite: 'lax',
   secure: process.env.NODE_ENV === 'production'
 }));
 
-// Apply API rate limiter to all /api routes
 app.use('/api/', apiLimiter);
 
 // Auth middleware
@@ -141,86 +143,97 @@ function sanitize(str) {
 
 // ========== AUTH API ==========
 
-// Register
-app.post('/api/auth/register', authLimiter, (req, res) => {
-  const name = sanitize(req.body.name);
-  const email = sanitize(req.body.email);
-  const password = req.body.password;
-  if (!name || !email || !password) return res.status(400).json({ error: 'กรุณากรอกข้อมูลให้ครบ' });
-  if (password.length < 6) return res.status(400).json({ error: 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร' });
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'รูปแบบอีเมลไม่ถูกต้อง' });
+app.post('/api/auth/register', authLimiter, async (req, res) => {
+  try {
+    const name = sanitize(req.body.name);
+    const email = sanitize(req.body.email);
+    const password = req.body.password;
+    if (!name || !email || !password) return res.status(400).json({ error: 'กรุณากรอกข้อมูลให้ครบ' });
+    if (password.length < 6) return res.status(400).json({ error: 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร' });
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'รูปแบบอีเมลไม่ถูกต้อง' });
 
-  const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
-  if (existing) return res.status(400).json({ error: 'อีเมลนี้ถูกใช้แล้ว' });
+    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+    if (existing.rows.length > 0) return res.status(400).json({ error: 'อีเมลนี้ถูกใช้แล้ว' });
 
-  const hash = bcrypt.hashSync(password, 10);
-  const result = db.prepare('INSERT INTO users (name, email, password) VALUES (?, ?, ?)').run(name, email, hash);
+    const hash = bcrypt.hashSync(password, 10);
+    const result = await pool.query('INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id', [name, email, hash]);
+    const userId = result.rows[0].id;
 
-  // Add default categories for new user
-  const defaults = [
-    ['ระบบสมัครเรียนไทย', '🇹🇭'], ['ระบบสมัครเรียนต่างชาติ', '🌏'],
-    ['ระบบคอร์สอบรม', '📚'], ['ระบบสอบภาษาอังกฤษ', '🔤'],
-    ['ระบบ e-Form', '📝'], ['ระบบ Grad Portal', '🎓'],
-    ['ระบบ iThesis', '📖'], ['ระบบ Turnitin', '🔍'], ['อื่นๆ', '📌']
-  ];
-  const insertCat = db.prepare('INSERT INTO categories (user_id, name, icon) VALUES (?, ?, ?)');
-  defaults.forEach(([name, icon]) => insertCat.run(result.lastInsertRowid, name, icon));
+    // Add default categories
+    const defaults = [
+      ['ระบบสมัครเรียนไทย', '🇹🇭'], ['ระบบสมัครเรียนต่างชาติ', '🌏'],
+      ['ระบบคอร์สอบรม', '📚'], ['ระบบสอบภาษาอังกฤษ', '🔤'],
+      ['ระบบ e-Form', '📝'], ['ระบบ Grad Portal', '🎓'],
+      ['ระบบ iThesis', '📖'], ['ระบบ Turnitin', '🔍'], ['อื่นๆ', '📌']
+    ];
+    for (const [catName, icon] of defaults) {
+      await pool.query('INSERT INTO categories (user_id, name, icon) VALUES ($1, $2, $3)', [userId, catName, icon]);
+    }
 
-  req.session.userId = result.lastInsertRowid;
-  req.session.userName = name;
-  res.status(201).json({ id: result.lastInsertRowid, name, email });
-});
-
-// Login
-app.post('/api/auth/login', authLimiter, (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) return res.status(400).json({ error: 'กรุณากรอกอีเมลและรหัสผ่าน' });
-
-  const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
-  if (!user || !bcrypt.compareSync(password, user.password)) {
-    return res.status(401).json({ error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' });
+    req.session.userId = userId;
+    req.session.userName = name;
+    res.status(201).json({ id: userId, name, email });
+  } catch (err) {
+    console.error('Register error:', err);
+    res.status(500).json({ error: 'เกิดข้อผิดพลาด' });
   }
-
-  req.session.userId = user.id;
-  req.session.userName = user.name;
-  res.json({ id: user.id, name: user.name, email: user.email });
 });
 
-// Logout
+app.post('/api/auth/login', authLimiter, async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'กรุณากรอกอีเมลและรหัสผ่าน' });
+
+    const result = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
+    const user = result.rows[0];
+    if (!user || !bcrypt.compareSync(password, user.password)) {
+      return res.status(401).json({ error: 'อีเมลหรือรหัสผ่านไม่ถูกต้อง' });
+    }
+
+    req.session.userId = user.id;
+    req.session.userName = user.name;
+    res.json({ id: user.id, name: user.name, email: user.email });
+  } catch (err) {
+    console.error('Login error:', err);
+    res.status(500).json({ error: 'เกิดข้อผิดพลาด' });
+  }
+});
+
 app.post('/api/auth/logout', (req, res) => {
   req.session = null;
   res.json({ success: true });
 });
 
-// Get current user
-app.get('/api/auth/me', (req, res) => {
+app.get('/api/auth/me', async (req, res) => {
   if (!req.session.userId) return res.json(null);
-  const user = db.prepare('SELECT id, name, email FROM users WHERE id = ?').get(req.session.userId);
-  res.json(user || null);
+  try {
+    const result = await pool.query('SELECT id, name, email FROM users WHERE id = $1', [req.session.userId]);
+    res.json(result.rows[0] || null);
+  } catch { res.json(null); }
 });
 
 // ========== CATEGORIES API ==========
 
-app.get('/api/categories', requireAuth, (req, res) => {
-  const cats = db.prepare('SELECT * FROM categories WHERE user_id = ? ORDER BY id').all(req.session.userId);
-  res.json(cats);
+app.get('/api/categories', requireAuth, async (req, res) => {
+  const result = await pool.query('SELECT * FROM categories WHERE user_id = $1 ORDER BY id', [req.session.userId]);
+  res.json(result.rows);
 });
 
-app.post('/api/categories', requireAuth, (req, res) => {
+app.post('/api/categories', requireAuth, async (req, res) => {
   const { name, icon } = req.body;
   if (!name) return res.status(400).json({ error: 'กรุณาใส่ชื่อประเภท' });
-  const result = db.prepare('INSERT INTO categories (user_id, name, icon) VALUES (?, ?, ?)').run(req.session.userId, name, icon || '📌');
-  res.status(201).json({ id: result.lastInsertRowid, user_id: req.session.userId, name, icon: icon || '📌' });
+  const result = await pool.query('INSERT INTO categories (user_id, name, icon) VALUES ($1, $2, $3) RETURNING *', [req.session.userId, name, icon || '📌']);
+  res.status(201).json(result.rows[0]);
 });
 
-app.put('/api/categories/:id', requireAuth, (req, res) => {
+app.put('/api/categories/:id', requireAuth, async (req, res) => {
   const { name, icon } = req.body;
-  db.prepare('UPDATE categories SET name=?, icon=? WHERE id=? AND user_id=?').run(name, icon || '📌', req.params.id, req.session.userId);
+  await pool.query('UPDATE categories SET name=$1, icon=$2 WHERE id=$3 AND user_id=$4', [name, icon || '📌', req.params.id, req.session.userId]);
   res.json({ success: true });
 });
 
-app.delete('/api/categories/:id', requireAuth, (req, res) => {
-  db.prepare('DELETE FROM categories WHERE id=? AND user_id=?').run(req.params.id, req.session.userId);
+app.delete('/api/categories/:id', requireAuth, async (req, res) => {
+  await pool.query('DELETE FROM categories WHERE id=$1 AND user_id=$2', [req.params.id, req.session.userId]);
   res.json({ success: true });
 });
 
@@ -233,46 +246,51 @@ app.post('/api/upload', requireAuth, upload.array('images', 5), (req, res) => {
 
 // ========== WORK LOGS API ==========
 
-app.get('/api/logs', requireAuth, (req, res) => {
+app.get('/api/logs', requireAuth, async (req, res) => {
   const { date, month, status, channel, system_type } = req.query;
-  let sql = 'SELECT * FROM work_logs WHERE user_id = ?';
+  let sql = 'SELECT * FROM work_logs WHERE user_id = $1';
   const params = [req.session.userId];
+  let paramCount = 1;
 
-  if (date) { sql += ' AND date = ?'; params.push(date); }
-  if (month) { sql += " AND strftime('%Y-%m', date) = ?"; params.push(month); }
-  if (status) { sql += ' AND status = ?'; params.push(status); }
-  if (channel) { sql += ' AND channel = ?'; params.push(channel); }
-  if (system_type) { sql += ' AND system_type = ?'; params.push(system_type); }
+  if (date) { paramCount++; sql += ` AND date = $${paramCount}`; params.push(date); }
+  if (month) { paramCount++; sql += ` AND to_char(date::date, 'YYYY-MM') = $${paramCount}`; params.push(month); }
+  if (status) { paramCount++; sql += ` AND status = $${paramCount}`; params.push(status); }
+  if (channel) { paramCount++; sql += ` AND channel = $${paramCount}`; params.push(channel); }
+  if (system_type) { paramCount++; sql += ` AND system_type = $${paramCount}`; params.push(system_type); }
 
   sql += ' ORDER BY date DESC, created_at DESC';
-  const rows = db.prepare(sql).all(...params);
-  rows.forEach(r => { try { r.images = JSON.parse(r.images); } catch { r.images = []; } });
-  res.json(rows);
+  const result = await pool.query(sql, params);
+  res.json(result.rows);
 });
 
-app.get('/api/summary', requireAuth, (req, res) => {
+app.get('/api/summary', requireAuth, async (req, res) => {
   const { type, date, month } = req.query;
   const uid = req.session.userId;
 
-  if (type === 'daily' && date) {
-    const total = db.prepare('SELECT COUNT(*) as count FROM work_logs WHERE user_id=? AND date=?').get(uid, date);
-    const byChannel = db.prepare('SELECT channel, COUNT(*) as count FROM work_logs WHERE user_id=? AND date=? GROUP BY channel').all(uid, date);
-    const byStatus = db.prepare('SELECT status, COUNT(*) as count FROM work_logs WHERE user_id=? AND date=? GROUP BY status').all(uid, date);
-    const bySystem = db.prepare("SELECT system_type, COUNT(*) as count FROM work_logs WHERE user_id=? AND date=? AND system_type!='' GROUP BY system_type").all(uid, date);
-    res.json({ total: total.count, byChannel, byStatus, bySystem });
-  } else if (type === 'monthly' && month) {
-    const total = db.prepare("SELECT COUNT(*) as count FROM work_logs WHERE user_id=? AND strftime('%Y-%m', date)=?").get(uid, month);
-    const byChannel = db.prepare("SELECT channel, COUNT(*) as count FROM work_logs WHERE user_id=? AND strftime('%Y-%m', date)=? GROUP BY channel").all(uid, month);
-    const byStatus = db.prepare("SELECT status, COUNT(*) as count FROM work_logs WHERE user_id=? AND strftime('%Y-%m', date)=? GROUP BY status").all(uid, month);
-    const byDay = db.prepare("SELECT date, COUNT(*) as count FROM work_logs WHERE user_id=? AND strftime('%Y-%m', date)=? GROUP BY date ORDER BY date").all(uid, month);
-    const bySystem = db.prepare("SELECT system_type, COUNT(*) as count FROM work_logs WHERE user_id=? AND strftime('%Y-%m', date)=? AND system_type!='' GROUP BY system_type").all(uid, month);
-    res.json({ total: total.count, byChannel, byStatus, byDay, bySystem });
-  } else {
+  try {
+    if (type === 'daily' && date) {
+      const total = await pool.query('SELECT COUNT(*) as count FROM work_logs WHERE user_id=$1 AND date=$2', [uid, date]);
+      const byChannel = await pool.query('SELECT channel, COUNT(*) as count FROM work_logs WHERE user_id=$1 AND date=$2 GROUP BY channel', [uid, date]);
+      const byStatus = await pool.query('SELECT status, COUNT(*) as count FROM work_logs WHERE user_id=$1 AND date=$2 GROUP BY status', [uid, date]);
+      const bySystem = await pool.query("SELECT system_type, COUNT(*) as count FROM work_logs WHERE user_id=$1 AND date=$2 AND system_type!='' GROUP BY system_type", [uid, date]);
+      res.json({ total: parseInt(total.rows[0].count), byChannel: byChannel.rows, byStatus: byStatus.rows, bySystem: bySystem.rows });
+    } else if (type === 'monthly' && month) {
+      const total = await pool.query("SELECT COUNT(*) as count FROM work_logs WHERE user_id=$1 AND to_char(date::date, 'YYYY-MM')=$2", [uid, month]);
+      const byChannel = await pool.query("SELECT channel, COUNT(*) as count FROM work_logs WHERE user_id=$1 AND to_char(date::date, 'YYYY-MM')=$2 GROUP BY channel", [uid, month]);
+      const byStatus = await pool.query("SELECT status, COUNT(*) as count FROM work_logs WHERE user_id=$1 AND to_char(date::date, 'YYYY-MM')=$2 GROUP BY status", [uid, month]);
+      const byDay = await pool.query("SELECT date, COUNT(*) as count FROM work_logs WHERE user_id=$1 AND to_char(date::date, 'YYYY-MM')=$2 GROUP BY date ORDER BY date", [uid, month]);
+      const bySystem = await pool.query("SELECT system_type, COUNT(*) as count FROM work_logs WHERE user_id=$1 AND to_char(date::date, 'YYYY-MM')=$2 AND system_type!='' GROUP BY system_type", [uid, month]);
+      res.json({ total: parseInt(total.rows[0].count), byChannel: byChannel.rows, byStatus: byStatus.rows, byDay: byDay.rows, bySystem: bySystem.rows });
+    } else {
+      res.json({ total: 0, byChannel: [], byStatus: [], bySystem: [] });
+    }
+  } catch (err) {
+    console.error('Summary error:', err);
     res.json({ total: 0, byChannel: [], byStatus: [], bySystem: [] });
   }
 });
 
-app.post('/api/logs', requireAuth, (req, res) => {
+app.post('/api/logs', requireAuth, async (req, res) => {
   const date = sanitize(req.body.date);
   const channel = sanitize(req.body.channel);
   const topic = sanitize(req.body.topic);
@@ -280,49 +298,49 @@ app.post('/api/logs', requireAuth, (req, res) => {
   const detail = sanitize(req.body.detail);
   const status = sanitize(req.body.status);
   const system_type = sanitize(req.body.system_type);
-  const images = req.body.images;
+  const images = req.body.images || [];
   if (!date || !channel || !topic) return res.status(400).json({ error: 'กรุณากรอก วันที่ ช่องทาง และเรื่อง' });
 
-  const result = db.prepare(`
-    INSERT INTO work_logs (user_id, date, channel, system_type, topic, reporter, detail, status, images)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(req.session.userId, date, channel, system_type, topic, reporter, detail, status || 'รอดำเนินการ', JSON.stringify(images || []));
-
-  const row = db.prepare('SELECT * FROM work_logs WHERE id = ?').get(result.lastInsertRowid);
-  try { row.images = JSON.parse(row.images); } catch { row.images = []; }
-  res.status(201).json(row);
+  const result = await pool.query(
+    'INSERT INTO work_logs (user_id, date, channel, system_type, topic, reporter, detail, status, images) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *',
+    [req.session.userId, date, channel, system_type, topic, reporter, detail, status || 'รอดำเนินการ', JSON.stringify(images)]
+  );
+  res.status(201).json(result.rows[0]);
 });
 
-app.put('/api/logs/:id', requireAuth, (req, res) => {
+app.put('/api/logs/:id', requireAuth, async (req, res) => {
   const { date, channel, topic, reporter, detail, status, images, system_type } = req.body;
-  db.prepare(`
-    UPDATE work_logs SET date=?, channel=?, system_type=?, topic=?, reporter=?, detail=?, status=?, images=?, updated_at=datetime('now','localtime')
-    WHERE id=? AND user_id=?
-  `).run(date, channel, system_type || '', topic, reporter || '', detail || '', status, JSON.stringify(images || []), req.params.id, req.session.userId);
-
-  const row = db.prepare('SELECT * FROM work_logs WHERE id = ?').get(req.params.id);
-  try { row.images = JSON.parse(row.images); } catch { row.images = []; }
-  res.json(row);
+  const result = await pool.query(
+    'UPDATE work_logs SET date=$1, channel=$2, system_type=$3, topic=$4, reporter=$5, detail=$6, status=$7, images=$8, updated_at=NOW() WHERE id=$9 AND user_id=$10 RETURNING *',
+    [date, channel, system_type || '', topic, reporter || '', detail || '', status, JSON.stringify(images || []), req.params.id, req.session.userId]
+  );
+  res.json(result.rows[0]);
 });
 
-app.delete('/api/logs/:id', requireAuth, (req, res) => {
-  const row = db.prepare('SELECT images FROM work_logs WHERE id=? AND user_id=?').get(req.params.id, req.session.userId);
-  if (row) {
-    try { JSON.parse(row.images).forEach(img => { const p = path.join(__dirname, 'public', img.path); if (fs.existsSync(p)) fs.unlinkSync(p); }); } catch {}
+app.delete('/api/logs/:id', requireAuth, async (req, res) => {
+  const result = await pool.query('SELECT images FROM work_logs WHERE id=$1 AND user_id=$2', [req.params.id, req.session.userId]);
+  if (result.rows[0]) {
+    try {
+      const images = typeof result.rows[0].images === 'string' ? JSON.parse(result.rows[0].images) : result.rows[0].images;
+      images.forEach(img => { const p = path.join(__dirname, 'public', img.path); if (fs.existsSync(p)) fs.unlinkSync(p); });
+    } catch {}
   }
-  db.prepare('DELETE FROM work_logs WHERE id=? AND user_id=?').run(req.params.id, req.session.userId);
+  await pool.query('DELETE FROM work_logs WHERE id=$1 AND user_id=$2', [req.params.id, req.session.userId]);
   res.json({ success: true });
 });
 
 // ========== EXPORT API ==========
 
-app.get('/api/export/:format', requireAuth, (req, res) => {
+app.get('/api/export/:format', requireAuth, async (req, res) => {
   const format = req.params.format;
   if (!['xlsx', 'csv'].includes(format)) return res.status(400).json({ error: 'รองรับเฉพาะ xlsx และ csv' });
 
-  const rows = db.prepare('SELECT date, channel, system_type, topic, reporter, detail, status, created_at FROM work_logs WHERE user_id = ? ORDER BY date DESC, created_at DESC').all(req.session.userId);
+  const result = await pool.query(
+    'SELECT date, channel, system_type, topic, reporter, detail, status, created_at FROM work_logs WHERE user_id = $1 ORDER BY date DESC, created_at DESC',
+    [req.session.userId]
+  );
 
-  const data = rows.map(r => ({
+  const data = result.rows.map(r => ({
     'วันที่': r.date,
     'ช่องทาง': r.channel,
     'ประเภทระบบ': r.system_type || '',
@@ -333,11 +351,14 @@ app.get('/api/export/:format', requireAuth, (req, res) => {
     'บันทึกเมื่อ': r.created_at
   }));
 
+  if (data.length === 0) {
+    data.push({ 'วันที่': '', 'ช่องทาง': '', 'ประเภทระบบ': '', 'เรื่อง': 'ไม่มีข้อมูล', 'ผู้แจ้ง': '', 'รายละเอียด': '', 'สถานะ': '', 'บันทึกเมื่อ': '' });
+  }
+
   const ws = XLSX.utils.json_to_sheet(data);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Work Log');
 
-  // Auto column widths
   const colWidths = Object.keys(data[0] || {}).map(key => ({
     wch: Math.max(key.length * 2, ...data.map(r => String(r[key] || '').length).slice(0, 50)) + 2
   }));
@@ -350,11 +371,16 @@ app.get('/api/export/:format', requireAuth, (req, res) => {
     res.send(buf);
   } else {
     const csvData = XLSX.utils.sheet_to_csv(ws);
-    const bom = '\uFEFF';
     res.setHeader('Content-Disposition', 'attachment; filename=work-log-export.csv');
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.send(bom + csvData);
+    res.send('\uFEFF' + csvData);
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Work Log app running at http://localhost:${PORT}`));
+// ========== START ==========
+initDB().then(() => {
+  app.listen(PORT, () => console.log(`🚀 Work Log app running at http://localhost:${PORT}`));
+}).catch(err => {
+  console.error('Failed to init database:', err);
+  process.exit(1);
+});
