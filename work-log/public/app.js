@@ -3,16 +3,36 @@ let editingId = null;
 let uploadedImages = [];
 let currentUser = null;
 let userCategories = [];
+let logsCache = {};
 
 // ========== Init ==========
 document.addEventListener('DOMContentLoaded', () => {
   initAuth();
   initModal();
+  initGlobalClicks();
 });
+
+// ========== Global Event Delegation ==========
+function initGlobalClicks() {
+  document.addEventListener('click', e => {
+    const btn = e.target.closest('[data-action]');
+    if (!btn) return;
+    const action = btn.dataset.action;
+    const id = btn.dataset.id;
+
+    if (action === 'edit-log') editLog(logsCache[id]);
+    else if (action === 'delete-log') deleteLog(id);
+    else if (action === 'delete-cat') deleteCategory(id);
+    else if (action === 'open-modal') openModal(btn.dataset.src);
+    else if (action === 'remove-image') removeImage(Number(id));
+    else if (action === 'ocr-detail') useOCRAsDetail();
+    else if (action === 'ocr-topic') useOCRAsTopic();
+    else if (action === 'ocr-close') closeOCRResult();
+  });
+}
 
 // ========== Auth ==========
 function initAuth() {
-  // Toggle login/register
   document.getElementById('show-register').addEventListener('click', e => {
     e.preventDefault();
     document.getElementById('login-form-wrap').style.display = 'none';
@@ -24,54 +44,38 @@ function initAuth() {
     document.getElementById('login-form-wrap').style.display = '';
   });
 
-  // Login
   document.getElementById('login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const errEl = document.getElementById('login-error');
     errEl.textContent = '';
     try {
       const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: document.getElementById('login-email').value,
-          password: document.getElementById('login-password').value
-        })
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: document.getElementById('login-email').value, password: document.getElementById('login-password').value })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       currentUser = data;
       showApp();
-    } catch (err) {
-      errEl.textContent = err.message;
-    }
+    } catch (err) { errEl.textContent = err.message; }
   });
 
-  // Register
   document.getElementById('register-form').addEventListener('submit', async e => {
     e.preventDefault();
     const errEl = document.getElementById('register-error');
     errEl.textContent = '';
     try {
       const res = await fetch('/api/auth/register', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: document.getElementById('reg-name').value,
-          email: document.getElementById('reg-email').value,
-          password: document.getElementById('reg-password').value
-        })
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: document.getElementById('reg-name').value, email: document.getElementById('reg-email').value, password: document.getElementById('reg-password').value })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       currentUser = data;
       showApp();
-    } catch (err) {
-      errEl.textContent = err.message;
-    }
+    } catch (err) { errEl.textContent = err.message; }
   });
 
-  // Logout
   document.getElementById('btn-logout').addEventListener('click', async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     currentUser = null;
@@ -79,7 +83,6 @@ function initAuth() {
     document.getElementById('auth-screen').style.display = 'flex';
   });
 
-  // Check if already logged in
   checkAuth();
 }
 
@@ -87,10 +90,7 @@ async function checkAuth() {
   try {
     const res = await fetch('/api/auth/me');
     const user = await res.json();
-    if (user) {
-      currentUser = user;
-      showApp();
-    }
+    if (user) { currentUser = user; showApp(); }
   } catch {}
 }
 
@@ -126,7 +126,6 @@ function populateCategoryDropdowns() {
   const selects = [document.getElementById('log-system'), document.getElementById('filter-system')];
   selects.forEach(sel => {
     const current = sel.value;
-    // Keep first option
     while (sel.options.length > 1) sel.remove(1);
     userCategories.forEach(cat => {
       const opt = document.createElement('option');
@@ -152,7 +151,7 @@ function initTabs() {
   });
 }
 
-// ========== Image Upload & OCR ==========
+// ========== Image Upload ==========
 function initUpload() {
   const zone = document.getElementById('upload-zone');
   const input = document.getElementById('file-input');
@@ -182,8 +181,8 @@ async function handleFiles(files) {
 function renderImagePreviews() {
   document.getElementById('image-preview-list').innerHTML = uploadedImages.map((img, i) => `
     <div class="image-preview-item">
-      <img src="${img.path}" alt="${img.originalname}" onclick="openModal('${img.path}')">
-      <button class="image-remove-btn" onclick="removeImage(${i})">&times;</button>
+      <img src="${img.path}" alt="${img.originalname}" data-action="open-modal" data-src="${img.path}">
+      <button class="image-remove-btn" data-action="remove-image" data-id="${i}">&times;</button>
       <span class="image-name">${img.originalname}</span>
     </div>
   `).join('');
@@ -262,9 +261,9 @@ function showOCRResult(text) {
       <div class="ocr-result-header"><h4>📝 ข้อความที่อ่านได้จากภาพ</h4><span class="ocr-hint-small">แก้ไขข้อความได้ก่อนกดใช้</span></div>
       <textarea id="ocr-text" rows="5">${cleanText}</textarea>
       <div class="ocr-actions">
-        <button type="button" class="btn btn-primary btn-sm" onclick="useOCRAsDetail()">📋 ใช้เป็นรายละเอียด</button>
-        <button type="button" class="btn btn-primary btn-sm" onclick="useOCRAsTopic()">📌 ใช้เป็นเรื่อง</button>
-        <button type="button" class="btn btn-secondary btn-sm" onclick="closeOCRResult()">ปิด</button>
+        <button type="button" class="btn btn-primary btn-sm" data-action="ocr-detail">📋 ใช้เป็นรายละเอียด</button>
+        <button type="button" class="btn btn-primary btn-sm" data-action="ocr-topic">📌 ใช้เป็นเรื่อง</button>
+        <button type="button" class="btn btn-secondary btn-sm" data-action="ocr-close">ปิด</button>
       </div>
     </div>`;
   container.style.display = 'block';
@@ -329,6 +328,7 @@ function resetForm() {
 }
 
 function editLog(log) {
+  if (!log) return;
   editingId = log.id;
   document.getElementById('log-date').value = log.date;
   document.getElementById('log-channel').value = log.channel;
@@ -359,7 +359,9 @@ async function deleteLog(id) {
 async function loadTodayLogs() {
   const today = new Date().toISOString().split('T')[0];
   const res = await fetch(`/api/logs?date=${today}`);
-  renderLogs(await res.json(), 'today-logs');
+  const logs = await res.json();
+  logs.forEach(l => logsCache[l.id] = l);
+  renderLogs(logs, 'today-logs');
 }
 
 async function loadFilteredLogs() {
@@ -374,7 +376,9 @@ async function loadFilteredLogs() {
   if (status) params.set('status', status);
   if (systemType) params.set('system_type', systemType);
   const res = await fetch('/api/logs?' + params.toString());
-  renderLogs(await res.json(), 'log-list');
+  const logs = await res.json();
+  logs.forEach(l => logsCache[l.id] = l);
+  renderLogs(logs, 'log-list');
 }
 
 function getStatusClass(s) { return s === 'รอดำเนินการ' ? 'waiting' : s === 'กำลังดำเนินการ' ? 'progress' : s === 'เสร็จแล้ว' ? 'done' : ''; }
@@ -386,7 +390,7 @@ function renderLogs(logs, containerId) {
   if (!logs.length) { container.innerHTML = '<div class="empty-state">ไม่มีรายการ</div>'; return; }
   container.innerHTML = logs.map(log => {
     const images = log.images || [];
-    const imagesHtml = images.length ? `<div class="log-card-images">${images.map(img => `<img src="${img.path}" alt="" class="log-thumb" onclick="openModal('${img.path}')">`).join('')}</div>` : '';
+    const imagesHtml = images.length ? `<div class="log-card-images">${images.map(img => `<img src="${img.path}" alt="" class="log-thumb" data-action="open-modal" data-src="${img.path}">`).join('')}</div>` : '';
     return `
       <div class="log-card status-${getStatusClass(log.status)}">
         <div class="log-card-header"><span class="log-card-title">${log.topic}</span>${getStatusBadge(log.status)}</div>
@@ -399,8 +403,8 @@ function renderLogs(logs, containerId) {
         ${log.detail ? `<div class="log-card-detail">${log.detail}</div>` : ''}
         ${imagesHtml}
         <div class="log-card-actions">
-          <button class="btn btn-sm btn-primary" onclick='editLog(${JSON.stringify(log)})'>✏️ แก้ไข</button>
-          <button class="btn btn-sm btn-danger" onclick="deleteLog(${log.id})">🗑️ ลบ</button>
+          <button class="btn btn-sm btn-primary" data-action="edit-log" data-id="${log.id}">✏️ แก้ไข</button>
+          <button class="btn btn-sm btn-danger" data-action="delete-log" data-id="${log.id}">🗑️ ลบ</button>
         </div>
       </div>`;
   }).join('');
@@ -465,12 +469,11 @@ function initSettings() {
 }
 
 function renderCategories() {
-  const container = document.getElementById('category-list');
-  container.innerHTML = userCategories.map(cat => `
+  document.getElementById('category-list').innerHTML = userCategories.map(cat => `
     <div class="category-item">
       <span class="cat-icon">${cat.icon}</span>
       <span class="cat-name">${cat.name}</span>
-      <button class="btn btn-sm btn-danger" onclick="deleteCategory(${cat.id})">🗑️ ลบ</button>
+      <button class="btn btn-sm btn-danger" data-action="delete-cat" data-id="${cat.id}">🗑️ ลบ</button>
     </div>
   `).join('');
 }
