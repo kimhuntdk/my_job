@@ -155,11 +155,21 @@ function initTabs() {
 function initUpload() {
   const zone = document.getElementById('upload-zone');
   const input = document.getElementById('file-input');
+  const cameraInput = document.getElementById('camera-input');
+
+  // Camera button
+  document.getElementById('btn-camera').addEventListener('click', () => cameraInput.click());
+  cameraInput.addEventListener('change', () => { handleFiles(cameraInput.files); cameraInput.value = ''; });
+
+  // Gallery button
+  document.getElementById('btn-gallery').addEventListener('click', () => input.click());
+  input.addEventListener('change', () => { handleFiles(input.files); input.value = ''; });
+
+  // Drag & drop zone
   zone.addEventListener('click', () => input.click());
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
   zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
-  input.addEventListener('change', () => { handleFiles(input.files); input.value = ''; });
 }
 
 async function handleFiles(files) {

@@ -90,10 +90,21 @@
         <h3>📷 แนบภาพหลักฐาน + อ่านข้อความ</h3>
         <p class="ocr-hint">อัปโหลดภาพจากอีเมล เฟซบุ๊ก LINE ฯลฯ ระบบจะอ่านข้อความให้ แก้ไขได้ก่อนใช้</p>
         <input type="file" id="file-input" accept="image/*" multiple hidden>
+        <input type="file" id="camera-input" accept="image/*" capture="environment" hidden>
+        <div class="upload-buttons">
+          <button type="button" class="upload-btn upload-btn-camera" id="btn-camera">
+            <span class="upload-btn-icon">📸</span>
+            <span>ถ่ายภาพ</span>
+          </button>
+          <button type="button" class="upload-btn upload-btn-file" id="btn-gallery">
+            <span class="upload-btn-icon">🖼️</span>
+            <span>เลือกจากแกลเลอรี</span>
+          </button>
+        </div>
         <div class="upload-zone" id="upload-zone">
           <div class="upload-placeholder">
             <span class="upload-icon">📁</span>
-            <p>คลิกเพื่อเลือกภาพ หรือลากไฟล์มาวางที่นี่</p>
+            <p>หรือลากไฟล์มาวางที่นี่</p>
             <p class="upload-formats">รองรับ: JPG, PNG, GIF, WEBP (สูงสุด 10MB)</p>
           </div>
         </div>
