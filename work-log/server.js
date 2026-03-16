@@ -183,7 +183,12 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
     if (existing.rows.length > 0) return res.status(400).json({ error: 'อีเมลนี้ถูกใช้แล้ว' });
 
     const hash = bcrypt.hashSync(password, 10);
-    const result = await pool.query('INSERT INTO users (name, email, password) VALUES ($1, $2, $3) RETURNING id', [name, email, hash]);
+
+    // First user becomes admin automatically
+    const userCount = await pool.query('SELECT COUNT(*) as count FROM users');
+    const role = parseInt(userCount.rows[0].count) === 0 ? 'admin' : 'user';
+
+    const result = await pool.query('INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id', [name, email, hash, role]);
     const userId = result.rows[0].id;
 
     // Add default categories
@@ -229,6 +234,14 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 app.post('/api/auth/logout', (req, res) => {
   req.session = null;
   res.json({ success: true });
+});
+
+// Setup: make first registered user admin (one-time use)
+app.post('/api/auth/setup-admin', requireAuth, async (req, res) => {
+  const adminExists = await pool.query("SELECT id FROM users WHERE role='admin'");
+  if (adminExists.rows.length > 0) return res.status(400).json({ error: 'มี Admin อยู่แล้ว' });
+  await pool.query('UPDATE users SET role=$1 WHERE id=$2', ['admin', req.session.userId]);
+  res.json({ success: true, message: 'คุณเป็น Admin แล้ว กรุณารีเฟรชหน้าเว็บ' });
 });
 
 // ========== CATEGORIES API ==========
