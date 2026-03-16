@@ -1,3 +1,15 @@
+// ========== Toast ==========
+function showToast(message, type = 'success') {
+  const container = document.getElementById('toast-container');
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  const icons = { success: '✅', error: '❌', warning: '⚠️', info: 'ℹ️' };
+  toast.innerHTML = `<span class="toast-icon">${icons[type] || '✅'}</span><span class="toast-msg">${message}</span>`;
+  container.appendChild(toast);
+  setTimeout(() => toast.classList.add('show'), 10);
+  setTimeout(() => { toast.classList.remove('show'); setTimeout(() => toast.remove(), 300); }, 5000);
+}
+
 // ========== State ==========
 let editingId = null;
 let uploadedImages = [];
@@ -23,6 +35,7 @@ function initGlobalClicks() {
     if (action === 'edit-log') editLog(logsCache[id]);
     else if (action === 'delete-log') deleteLog(id);
     else if (action === 'delete-cat') deleteCategory(id);
+    else if (action === 'delete-tag') deleteTag(id);
     else if (action === 'open-modal') openModal(btn.dataset.src);
     else if (action === 'remove-image') removeImage(Number(id));
     else if (action === 'ocr-detail') useOCRAsDetail();
@@ -159,7 +172,7 @@ function initTabs() {
       document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
       if (tab.dataset.tab === 'list') loadFilteredLogs();
       if (tab.dataset.tab === 'pending') loadPendingTasks();
-      if (tab.dataset.tab === 'settings') renderCategories();
+      if (tab.dataset.tab === 'settings') { renderCategories(); renderTagSettings(); }
     });
   });
 }
@@ -329,10 +342,24 @@ function useOCRAsTopic() {
 function closeOCRResult() { document.getElementById('ocr-result').style.display = 'none'; }
 
 // ========== Quick Tags ==========
-function initQuickTags() {
-  document.querySelectorAll('.quick-tag').forEach(tag => {
+let userQuickTags = [];
+
+async function loadQuickTags() {
+  const res = await fetch('/api/quick-tags');
+  userQuickTags = await res.json();
+  renderQuickTags();
+}
+
+function renderQuickTags() {
+  const container = document.getElementById('quick-topics');
+  container.innerHTML = userQuickTags.map(t => `<span class="quick-tag" data-value="${t.name}">${t.name}</span>`).join('');
+  container.querySelectorAll('.quick-tag').forEach(tag => {
     tag.addEventListener('click', () => { document.getElementById('log-topic').value = tag.dataset.value; document.getElementById('log-topic').focus(); });
   });
+}
+
+function initQuickTags() {
+  loadQuickTags();
 }
 
 // ========== Form ==========
@@ -354,9 +381,10 @@ function initForm() {
       const method = editingId ? 'PUT' : 'POST';
       const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
       if (!res.ok) { const err = await res.json(); throw new Error(err.error); }
+      showToast(editingId ? '✏️ อัปเดตสำเร็จ' : '💾 บันทึกสำเร็จ');
       resetForm();
       loadTodayLogs();
-    } catch (err) { alert('เกิดข้อผิดพลาด: ' + err.message); }
+    } catch (err) { showToast('เกิดข้อผิดพลาด: ' + err.message, 'error'); }
   });
   document.getElementById('btn-cancel').addEventListener('click', resetForm);
 }
@@ -398,6 +426,7 @@ function editLog(log) {
 async function deleteLog(id) {
   if (!confirm('ต้องการลบรายการนี้ใช่ไหม?')) return;
   await fetch(`/api/logs/${id}`, { method: 'DELETE' });
+  showToast('🗑️ ลบรายการสำเร็จ');
   loadTodayLogs();
   loadFilteredLogs();
 }
@@ -572,13 +601,34 @@ function initSettings() {
   document.getElementById('btn-add-cat').addEventListener('click', async () => {
     const name = document.getElementById('new-cat-name').value.trim();
     const icon = document.getElementById('new-cat-icon').value.trim() || '📌';
-    if (!name) return alert('กรุณาใส่ชื่อประเภท');
+    if (!name) return showToast('กรุณาใส่ชื่อประเภท', 'warning');
     await fetch('/api/categories', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, icon }) });
     document.getElementById('new-cat-name').value = '';
     document.getElementById('new-cat-icon').value = '';
     await loadCategories();
     renderCategories();
+    showToast('เพิ่มประเภทระบบสำเร็จ');
   });
+
+  // Quick Tags management
+  document.getElementById('btn-add-tag').addEventListener('click', async () => {
+    const name = document.getElementById('new-tag-name').value.trim();
+    if (!name) return showToast('กรุณาใส่ชื่อหัวข้อ', 'warning');
+    await fetch('/api/quick-tags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+    document.getElementById('new-tag-name').value = '';
+    await loadQuickTags();
+    renderTagSettings();
+    showToast('เพิ่มหัวข้อเรื่องสำเร็จ');
+  });
+}
+
+function renderTagSettings() {
+  document.getElementById('tag-list').innerHTML = userQuickTags.map(t => `
+    <div class="category-item">
+      <span class="cat-name">🏷️ ${t.name}</span>
+      <button class="btn btn-sm btn-danger" data-action="delete-tag" data-id="${t.id}">🗑️ ลบ</button>
+    </div>
+  `).join('');
 }
 
 function renderCategories() {
@@ -596,6 +646,15 @@ async function deleteCategory(id) {
   await fetch(`/api/categories/${id}`, { method: 'DELETE' });
   await loadCategories();
   renderCategories();
+  showToast('ลบประเภทระบบสำเร็จ');
+}
+
+async function deleteTag(id) {
+  if (!confirm('ต้องการลบหัวข้อนี้ใช่ไหม?')) return;
+  await fetch(`/api/quick-tags/${id}`, { method: 'DELETE' });
+  await loadQuickTags();
+  renderTagSettings();
+  showToast('ลบหัวข้อเรื่องสำเร็จ');
 }
 
 // ========== Image Modal ==========
@@ -700,7 +759,8 @@ async function clockAction(type) {
     const res = await fetch(url, { method: 'POST', body: formData });
     const data = await res.json();
 
-    if (!res.ok) { alert(data.error); return; }
+    if (!res.ok) { showToast(data.error, 'error'); return; }
+    showToast(type === 'in' ? '🟢 ลงเวลาเข้าสำเร็จ' : '🔴 ลงเวลาออกสำเร็จ');
     loadTodayAttendance();
   } catch (err) {
     alert('เกิดข้อผิดพลาด: ' + err.message);

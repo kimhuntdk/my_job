@@ -157,13 +157,7 @@
         <div class="form-group">
           <label>เรื่อง <span class="required">*</span></label>
           <input type="text" id="log-topic" placeholder="เช่น สอบถามการใช้งานระบบ, แจ้งปัญหา..." required>
-          <div class="quick-tags" id="quick-topics">
-            <span class="quick-tag" data-value="สอบถามการใช้งาน">สอบถามการใช้งาน</span>
-            <span class="quick-tag" data-value="แจ้งปัญหา">แจ้งปัญหา</span>
-            <span class="quick-tag" data-value="ขอรีเซ็ตรหัสผ่าน">รีเซ็ตรหัสผ่าน</span>
-            <span class="quick-tag" data-value="แจ้งซ่อม/แก้ไข">แจ้งซ่อม/แก้ไข</span>
-            <span class="quick-tag" data-value="ขอข้อมูล/เอกสาร">ขอข้อมูล/เอกสาร</span>
-          </div>
+          <div class="quick-tags" id="quick-topics"></div>
         </div>
 
         <div class="form-group">
@@ -421,6 +415,18 @@
 
         <div id="category-list"></div>
       </div>
+
+      <div class="settings-card" style="margin-top:20px">
+        <h2>🏷️ ตั้งค่าหัวข้อเรื่องด่วน (Quick Tags)</h2>
+        <p class="settings-hint">เพิ่ม หรือลบหัวข้อเรื่องที่ใช้บ่อย กดเลือกได้เลยในหน้าบันทึก</p>
+
+        <div class="add-category-form">
+          <input type="text" id="new-tag-name" placeholder="ชื่อหัวข้อเรื่อง เช่น สอบถามการใช้งาน">
+          <button class="btn btn-primary" id="btn-add-tag">+ เพิ่ม</button>
+        </div>
+
+        <div id="tag-list"></div>
+      </div>
     </section>
   </div>
 
@@ -432,6 +438,8 @@
       <img id="modal-image" src="" alt="">
     </div>
   </div>
+
+  <div id="toast-container" class="toast-container"></div>
 
   <script src="app.js"></script>
   <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');</script>

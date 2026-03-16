@@ -1053,6 +1053,21 @@ textarea {
 .att-late { background: #fef3e0; color: #e37400; }
 .att-done { background: #e6f4ea; color: #137333; }
 .att-hr { background: #e8eaf6; color: #3949ab; }
+
+/* ========== Toast ========== */
+.toast-container { position: fixed; top: 20px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+.toast { display: flex; align-items: center; gap: 10px; padding: 14px 20px; border-radius: 12px; background: #fff; box-shadow: 0 4px 20px rgba(0,0,0,0.15); font-size: 15px; font-weight: 500; transform: translateX(120%); transition: transform 0.3s ease; max-width: 360px; }
+.toast.show { transform: translateX(0); }
+.toast-icon { font-size: 20px; }
+.toast-success { border-left: 4px solid #34a853; }
+.toast-error { border-left: 4px solid #ea4335; }
+.toast-warning { border-left: 4px solid #fbbc04; }
+.toast-info { border-left: 4px solid #1a73e8; }
+
+@media (max-width: 600px) {
+  .toast-container { top: 10px; right: 10px; left: 10px; }
+  .toast { max-width: 100%; }
+}
 .attendance-actions { display: flex; gap: 16px; justify-content: center; margin: 24px 0; flex-wrap: wrap; }
 .btn-lg { padding: 20px 32px; font-size: 18px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; gap: 4px; border: none; cursor: pointer; min-width: 160px; transition: all 0.2s; }
 .btn-lg small { font-size: 12px; opacity: 0.8; }

@@ -63,6 +63,14 @@ async function initDB() {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    // Quick tags table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS quick_tags (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        name TEXT NOT NULL
+      )
+    `);
     // Attendance table
     await client.query(`
       CREATE TABLE IF NOT EXISTS attendance (
@@ -202,6 +210,12 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
       await pool.query('INSERT INTO categories (user_id, name, icon) VALUES ($1, $2, $3)', [userId, catName, icon]);
     }
 
+    // Add default quick tags
+    const defaultTags = ['สอบถามการใช้งาน', 'แจ้งปัญหา', 'รีเซ็ตรหัสผ่าน', 'แจ้งซ่อม/แก้ไข', 'ขอข้อมูล/เอกสาร'];
+    for (const tag of defaultTags) {
+      await pool.query('INSERT INTO quick_tags (user_id, name) VALUES ($1, $2)', [userId, tag]);
+    }
+
     req.session.userId = userId;
     req.session.userName = name;
     res.status(201).json({ id: userId, name, email });
@@ -264,6 +278,25 @@ app.put('/api/categories/:id', requireAuth, async (req, res) => {
 
 app.delete('/api/categories/:id', requireAuth, async (req, res) => {
   await pool.query('DELETE FROM categories WHERE id=$1 AND user_id=$2', [req.params.id, req.session.userId]);
+  res.json({ success: true });
+});
+
+// ========== QUICK TAGS API ==========
+
+app.get('/api/quick-tags', requireAuth, async (req, res) => {
+  const result = await pool.query('SELECT * FROM quick_tags WHERE user_id = $1 ORDER BY id', [req.session.userId]);
+  res.json(result.rows);
+});
+
+app.post('/api/quick-tags', requireAuth, async (req, res) => {
+  const name = sanitize(req.body.name);
+  if (!name) return res.status(400).json({ error: 'กรุณาใส่ชื่อ' });
+  const result = await pool.query('INSERT INTO quick_tags (user_id, name) VALUES ($1, $2) RETURNING *', [req.session.userId, name]);
+  res.status(201).json(result.rows[0]);
+});
+
+app.delete('/api/quick-tags/:id', requireAuth, async (req, res) => {
+  await pool.query('DELETE FROM quick_tags WHERE id=$1 AND user_id=$2', [req.params.id, req.session.userId]);
   res.json({ success: true });
 });
 
