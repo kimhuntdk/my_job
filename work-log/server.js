@@ -236,10 +236,8 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ success: true });
 });
 
-// Setup: make first registered user admin (one-time use)
+// Setup: make current user admin
 app.post('/api/auth/setup-admin', requireAuth, async (req, res) => {
-  const adminExists = await pool.query("SELECT id FROM users WHERE role='admin'");
-  if (adminExists.rows.length > 0) return res.status(400).json({ error: 'มี Admin อยู่แล้ว' });
   await pool.query('UPDATE users SET role=$1 WHERE id=$2', ['admin', req.session.userId]);
   res.json({ success: true, message: 'คุณเป็น Admin แล้ว กรุณารีเฟรชหน้าเว็บ' });
 });
