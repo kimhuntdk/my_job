@@ -36,29 +36,7 @@
           <div id="login-error" class="error-msg"></div>
           <button type="submit" class="btn btn-primary btn-full">🔑 เข้าสู่ระบบ</button>
         </form>
-        <p class="auth-switch">ยังไม่มีบัญชี? <a href="#" id="show-register">ลงทะเบียน</a></p>
-      </div>
-
-      <!-- Register Form -->
-      <div id="register-form-wrap" style="display:none">
-        <h2>ลงทะเบียน</h2>
-        <form id="register-form">
-          <div class="form-group">
-            <label>ชื่อ</label>
-            <input type="text" id="reg-name" placeholder="ชื่อ-นามสกุล" required>
-          </div>
-          <div class="form-group">
-            <label>อีเมล</label>
-            <input type="email" id="reg-email" placeholder="email@example.com" required>
-          </div>
-          <div class="form-group">
-            <label>รหัสผ่าน</label>
-            <input type="password" id="reg-password" placeholder="อย่างน้อย 6 ตัวอักษร" minlength="6" required>
-          </div>
-          <div id="register-error" class="error-msg"></div>
-          <button type="submit" class="btn btn-primary btn-full">📝 ลงทะเบียน</button>
-        </form>
-        <p class="auth-switch">มีบัญชีแล้ว? <a href="#" id="show-login">เข้าสู่ระบบ</a></p>
+        <p class="auth-hint">ติดต่อ Admin เพื่อสร้างบัญชี</p>
       </div>
     </div>
   </div>
@@ -272,6 +250,25 @@
     <section id="tab-admin" class="tab-content">
       <div class="admin-card">
         <h2>👑 Admin - จัดการระบบ</h2>
+
+        <div class="admin-section">
+          <h3>➕ สร้างบัญชีผู้ใช้ใหม่</h3>
+          <div class="form-row">
+            <div class="form-group"><label>ชื่อ</label><input type="text" id="admin-new-name" placeholder="ชื่อ-นามสกุล"></div>
+            <div class="form-group"><label>อีเมล</label><input type="email" id="admin-new-email" placeholder="email@example.com"></div>
+          </div>
+          <div class="form-row">
+            <div class="form-group"><label>รหัสผ่าน</label><input type="text" id="admin-new-password" placeholder="อย่างน้อย 6 ตัวอักษร"></div>
+            <div class="form-group"><label>สิทธิ์</label>
+              <select id="admin-new-role">
+                <option value="user">👤 User</option>
+                <option value="hr">🏢 ฝ่ายบุคคล</option>
+                <option value="admin">👑 Admin</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary" id="btn-admin-create-user">➕ สร้างบัญชี</button>
+        </div>
 
         <div class="admin-section">
           <h3>👥 จัดการผู้ใช้</h3>

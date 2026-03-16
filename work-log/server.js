@@ -178,51 +178,9 @@ function sanitize(str) {
 
 // ========== AUTH API ==========
 
+// Public registration disabled - only admin can create users
 app.post('/api/auth/register', authLimiter, async (req, res) => {
-  try {
-    const name = sanitize(req.body.name);
-    const email = sanitize(req.body.email);
-    const password = req.body.password;
-    if (!name || !email || !password) return res.status(400).json({ error: 'กรุณากรอกข้อมูลให้ครบ' });
-    if (password.length < 6) return res.status(400).json({ error: 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร' });
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: 'รูปแบบอีเมลไม่ถูกต้อง' });
-
-    const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
-    if (existing.rows.length > 0) return res.status(400).json({ error: 'อีเมลนี้ถูกใช้แล้ว' });
-
-    const hash = bcrypt.hashSync(password, 10);
-
-    // First user becomes admin automatically
-    const userCount = await pool.query('SELECT COUNT(*) as count FROM users');
-    const role = parseInt(userCount.rows[0].count) === 0 ? 'admin' : 'user';
-
-    const result = await pool.query('INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id', [name, email, hash, role]);
-    const userId = result.rows[0].id;
-
-    // Add default categories
-    const defaults = [
-      ['ระบบสมัครเรียนไทย', '🇹🇭'], ['ระบบสมัครเรียนต่างชาติ', '🌏'],
-      ['ระบบคอร์สอบรม', '📚'], ['ระบบสอบภาษาอังกฤษ', '🔤'],
-      ['ระบบ e-Form', '📝'], ['ระบบ Grad Portal', '🎓'],
-      ['ระบบ iThesis', '📖'], ['ระบบ Turnitin', '🔍'], ['อื่นๆ', '📌']
-    ];
-    for (const [catName, icon] of defaults) {
-      await pool.query('INSERT INTO categories (user_id, name, icon) VALUES ($1, $2, $3)', [userId, catName, icon]);
-    }
-
-    // Add default quick tags
-    const defaultTags = ['สอบถามการใช้งาน', 'แจ้งปัญหา', 'รีเซ็ตรหัสผ่าน', 'แจ้งซ่อม/แก้ไข', 'ขอข้อมูล/เอกสาร'];
-    for (const tag of defaultTags) {
-      await pool.query('INSERT INTO quick_tags (user_id, name) VALUES ($1, $2)', [userId, tag]);
-    }
-
-    req.session.userId = userId;
-    req.session.userName = name;
-    res.status(201).json({ id: userId, name, email });
-  } catch (err) {
-    console.error('Register error:', err);
-    res.status(500).json({ error: 'เกิดข้อผิดพลาด' });
-  }
+  return res.status(403).json({ error: 'การลงทะเบียนถูกปิด กรุณาติดต่อ Admin' });
 });
 
 app.post('/api/auth/login', authLimiter, async (req, res) => {
@@ -654,6 +612,19 @@ app.put('/api/admin/users/:id/reset-password', requireAdmin, async (req, res) =>
   const hash = bcrypt.hashSync(password, 10);
   await pool.query('UPDATE users SET password=$1 WHERE id=$2', [hash, req.params.id]);
   res.json({ success: true });
+});
+
+// Admin create user
+app.post('/api/admin/users', requireAdmin, async (req, res) => {
+  const { name, email, password, role } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'กรุณากรอกข้อมูลให้ครบ' });
+  if (password.length < 6) return res.status(400).json({ error: 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร' });
+  const existing = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+  if (existing.rows.length > 0) return res.status(400).json({ error: 'อีเมลนี้ถูกใช้แล้ว' });
+  const hash = bcrypt.hashSync(password, 10);
+  const userRole = ['user', 'admin', 'hr'].includes(role) ? role : 'user';
+  const result = await pool.query('INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role', [sanitize(name), email.toLowerCase(), hash, userRole]);
+  res.json(result.rows[0]);
 });
 
 app.put('/api/admin/users/:id/role', requireAdmin, async (req, res) => {

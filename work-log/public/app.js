@@ -47,17 +47,6 @@ function initGlobalClicks() {
 
 // ========== Auth ==========
 function initAuth() {
-  document.getElementById('show-register').addEventListener('click', e => {
-    e.preventDefault();
-    document.getElementById('login-form-wrap').style.display = 'none';
-    document.getElementById('register-form-wrap').style.display = '';
-  });
-  document.getElementById('show-login').addEventListener('click', e => {
-    e.preventDefault();
-    document.getElementById('register-form-wrap').style.display = 'none';
-    document.getElementById('login-form-wrap').style.display = '';
-  });
-
   document.getElementById('login-form').addEventListener('submit', async e => {
     e.preventDefault();
     const errEl = document.getElementById('login-error');
@@ -66,22 +55,6 @@ function initAuth() {
       const res = await fetch('/api/auth/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: document.getElementById('login-email').value, password: document.getElementById('login-password').value })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      currentUser = data;
-      showApp();
-    } catch (err) { errEl.textContent = err.message; }
-  });
-
-  document.getElementById('register-form').addEventListener('submit', async e => {
-    e.preventDefault();
-    const errEl = document.getElementById('register-error');
-    errEl.textContent = '';
-    try {
-      const res = await fetch('/api/auth/register', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: document.getElementById('reg-name').value, email: document.getElementById('reg-email').value, password: document.getElementById('reg-password').value })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -944,6 +917,31 @@ function initAdmin() {
   document.getElementById('admin-att-date').value = today;
   document.getElementById('admin-logs-month').value = today.substring(0, 7);
   document.getElementById('admin-logs-date').value = today;
+
+  // Create user
+  document.getElementById('btn-admin-create-user').addEventListener('click', async () => {
+    const name = document.getElementById('admin-new-name').value.trim();
+    const email = document.getElementById('admin-new-email').value.trim();
+    const password = document.getElementById('admin-new-password').value;
+    const role = document.getElementById('admin-new-role').value;
+    if (!name || !email || !password) return showToast('กรุณากรอกข้อมูลให้ครบ', 'warning');
+    if (password.length < 6) return showToast('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'warning');
+    const res = await fetch('/api/admin/users', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password, role })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast(`✅ สร้างบัญชี "${name}" สำเร็จ`);
+      document.getElementById('admin-new-name').value = '';
+      document.getElementById('admin-new-email').value = '';
+      document.getElementById('admin-new-password').value = '';
+      document.getElementById('admin-new-role').value = 'user';
+      loadAdminUsers();
+    } else {
+      showToast(data.error, 'error');
+    }
+  });
 
   loadAdminUsers();
 }
