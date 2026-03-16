@@ -146,6 +146,7 @@ function initTabs() {
       tab.classList.add('active');
       document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
       if (tab.dataset.tab === 'list') loadFilteredLogs();
+      if (tab.dataset.tab === 'pending') loadPendingTasks();
       if (tab.dataset.tab === 'settings') renderCategories();
     });
   });
@@ -442,6 +443,72 @@ function renderLogs(logs, containerId) {
         </div>
       </div>`;
   }).join('');
+}
+
+// ========== Pending Tasks ==========
+async function loadPendingTasks() {
+  const res = await fetch('/api/pending');
+  let tasks = await res.json();
+  tasks.forEach(t => logsCache[t.id] = t);
+
+  // Sort
+  const sortEl = document.getElementById('pending-sort');
+  const filterEl = document.getElementById('pending-filter-status');
+
+  const sort = sortEl.value;
+  const filterStatus = filterEl.value;
+
+  if (filterStatus !== 'all') tasks = tasks.filter(t => t.status === filterStatus);
+  if (sort === 'newest') tasks.reverse();
+
+  // Stats
+  const waiting = tasks.filter(t => t.status === 'รอดำเนินการ').length;
+  const inProgress = tasks.filter(t => t.status === 'กำลังดำเนินการ').length;
+  const urgent = tasks.filter(t => t.days_pending >= 7).length;
+
+  document.getElementById('pending-stats').innerHTML = `
+    <div class="stat-chips">
+      <span class="stat-chip chip-total">ทั้งหมด ${tasks.length}</span>
+      <span class="stat-chip chip-waiting">🟡 รอ ${waiting}</span>
+      <span class="stat-chip chip-progress">🔵 กำลังทำ ${inProgress}</span>
+      ${urgent > 0 ? `<span class="stat-chip chip-urgent">🔴 เกิน 7 วัน ${urgent}</span>` : ''}
+    </div>`;
+
+  // Render
+  const container = document.getElementById('pending-list');
+  if (!tasks.length) { container.innerHTML = '<div class="empty-state">🎉 ไม่มีงานค้าง!</div>'; return; }
+
+  container.innerHTML = tasks.map(task => {
+    const days = task.days_pending || 0;
+    const urgentClass = days >= 7 ? 'urgent' : days >= 3 ? 'warning' : '';
+    const daysLabel = days === 0 ? 'วันนี้' : `${days} วันแล้ว`;
+    const images = task.images || [];
+    const imagesHtml = images.length ? `<div class="log-card-images">${images.map(img => `<img src="${img.path}" alt="" class="log-thumb" data-action="open-modal" data-src="${img.path}">`).join('')}</div>` : '';
+    return `
+      <div class="log-card pending-card ${urgentClass}">
+        <div class="log-card-header">
+          <span class="log-card-title">${task.topic}</span>
+          <span class="days-badge ${urgentClass}">⏱️ ${daysLabel}</span>
+        </div>
+        <div class="log-card-meta">
+          ${getStatusBadge(task.status)}
+          <span>${getChannelIcon(task.channel)} ${task.channel}</span>
+          ${task.system_type ? `<span class="badge badge-system">🖥️ ${task.system_type}</span>` : ''}
+          <span>📅 ${task.date}</span>
+          ${task.reporter ? `<span>👤 ${task.reporter}</span>` : ''}
+        </div>
+        ${task.detail ? `<div class="log-card-detail">${task.detail}</div>` : ''}
+        ${imagesHtml}
+        <div class="log-card-actions">
+          <button class="btn btn-sm btn-primary" data-action="edit-log" data-id="${task.id}">✏️ แก้ไข</button>
+          <button class="btn btn-sm btn-danger" data-action="delete-log" data-id="${task.id}">🗑️ ลบ</button>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Attach sort/filter events
+  sortEl.onchange = loadPendingTasks;
+  filterEl.onchange = loadPendingTasks;
 }
 
 // ========== Filter ==========

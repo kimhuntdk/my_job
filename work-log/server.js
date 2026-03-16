@@ -361,6 +361,20 @@ app.delete('/api/logs/:id', requireAuth, async (req, res) => {
   res.json({ success: true });
 });
 
+// ========== PENDING TASKS API ==========
+
+app.get('/api/pending', requireAuth, async (req, res) => {
+  const result = await pool.query(
+    `SELECT *,
+      CURRENT_DATE - date::date AS days_pending
+    FROM work_logs
+    WHERE user_id = $1 AND status != 'เสร็จแล้ว'
+    ORDER BY date::date ASC`,
+    [req.session.userId]
+  );
+  res.json(result.rows);
+});
+
 // ========== EXPORT API ==========
 
 app.get('/api/export/:format', requireAuth, async (req, res) => {

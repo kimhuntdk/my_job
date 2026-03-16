@@ -79,6 +79,7 @@
     <nav class="tabs">
       <button class="tab active" data-tab="record">📝 บันทึก</button>
       <button class="tab" data-tab="list">📄 รายการ</button>
+      <button class="tab" data-tab="pending">⏳ งานค้าง</button>
       <button class="tab" data-tab="summary">📊 สรุป</button>
       <button class="tab" data-tab="settings">⚙️ ตั้งค่า</button>
     </nav>
@@ -229,6 +230,28 @@
       </div>
 
       <div id="log-list"></div>
+    </section>
+
+    <!-- Tab: Pending -->
+    <section id="tab-pending" class="tab-content">
+      <div class="pending-header">
+        <h3>⏳ งานค้าง</h3>
+        <div class="pending-stats" id="pending-stats"></div>
+      </div>
+      <div class="pending-sort">
+        <label>เรียงตาม:</label>
+        <select id="pending-sort">
+          <option value="oldest">ค้างนานสุดก่อน</option>
+          <option value="newest">ล่าสุดก่อน</option>
+        </select>
+        <label>สถานะ:</label>
+        <select id="pending-filter-status">
+          <option value="all">ทั้งหมด</option>
+          <option value="รอดำเนินการ">🟡 รอดำเนินการ</option>
+          <option value="กำลังดำเนินการ">🔵 กำลังดำเนินการ</option>
+        </select>
+      </div>
+      <div id="pending-list"></div>
     </section>
 
     <!-- Tab: Summary -->
