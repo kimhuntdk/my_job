@@ -611,6 +611,29 @@ function initSettings() {
     showToast('เพิ่มประเภทระบบสำเร็จ');
   });
 
+  // Change password
+  document.getElementById('btn-change-password').addEventListener('click', async () => {
+    const oldPw = document.getElementById('old-password').value;
+    const newPw = document.getElementById('new-password').value;
+    const confirmPw = document.getElementById('confirm-password').value;
+    if (!oldPw || !newPw || !confirmPw) return showToast('กรุณากรอกข้อมูลให้ครบ', 'warning');
+    if (newPw.length < 6) return showToast('รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร', 'warning');
+    if (newPw !== confirmPw) return showToast('รหัสผ่านใหม่ไม่ตรงกัน', 'error');
+    const res = await fetch('/api/auth/change-password', {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oldPassword: oldPw, newPassword: newPw })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast('🔑 เปลี่ยนรหัสผ่านสำเร็จ');
+      document.getElementById('old-password').value = '';
+      document.getElementById('new-password').value = '';
+      document.getElementById('confirm-password').value = '';
+    } else {
+      showToast(data.error, 'error');
+    }
+  });
+
   // Quick Tags management
   document.getElementById('btn-add-tag').addEventListener('click', async () => {
     const name = document.getElementById('new-tag-name').value.trim();

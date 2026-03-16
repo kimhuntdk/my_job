@@ -256,6 +256,22 @@ app.post('/api/auth/setup-admin', requireAuth, async (req, res) => {
   res.json({ success: true, message: 'คุณเป็น Admin แล้ว กรุณารีเฟรชหน้าเว็บ' });
 });
 
+// ========== CHANGE PASSWORD ==========
+app.put('/api/auth/change-password', requireAuth, async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+  if (!oldPassword || !newPassword) return res.status(400).json({ error: 'กรุณากรอกข้อมูลให้ครบ' });
+  if (newPassword.length < 6) return res.status(400).json({ error: 'รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร' });
+
+  const result = await pool.query('SELECT password FROM users WHERE id=$1', [req.session.userId]);
+  if (!bcrypt.compareSync(oldPassword, result.rows[0].password)) {
+    return res.status(400).json({ error: 'รหัสผ่านเดิมไม่ถูกต้อง' });
+  }
+
+  const hash = bcrypt.hashSync(newPassword, 10);
+  await pool.query('UPDATE users SET password=$1 WHERE id=$2', [hash, req.session.userId]);
+  res.json({ success: true });
+});
+
 // ========== CATEGORIES API ==========
 
 app.get('/api/categories', requireAuth, async (req, res) => {
