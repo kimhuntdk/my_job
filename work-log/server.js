@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const XLSX = require('xlsx');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 
 // ========== PostgreSQL ==========
