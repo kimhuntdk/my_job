@@ -91,8 +91,15 @@
     <section id="tab-record" class="tab-content active">
       <!-- Image Upload & OCR -->
       <div class="ocr-section">
-        <h3>📷 แนบภาพหลักฐาน + อ่านข้อความ</h3>
-        <p class="ocr-hint">อัปโหลดภาพจากอีเมล เฟซบุ๊ก LINE ฯลฯ ระบบจะอ่านข้อความให้ แก้ไขได้ก่อนใช้</p>
+        <h3>📷 แนบภาพหลักฐาน</h3>
+        <p class="ocr-hint">อัปโหลดภาพจากอีเมล เฟซบุ๊ก LINE ฯลฯ</p>
+        <div class="ocr-toggle">
+          <label class="toggle-label">
+            <input type="checkbox" id="ocr-enabled">
+            <span class="toggle-switch"></span>
+            <span>📖 อ่านข้อความจากภาพ (OCR)</span>
+          </label>
+        </div>
         <input type="file" id="file-input" accept="image/*" multiple hidden>
         <input type="file" id="camera-input" accept="image/*" capture="environment" hidden>
         <div class="upload-buttons">

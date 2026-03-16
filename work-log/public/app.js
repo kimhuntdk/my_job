@@ -235,7 +235,7 @@ async function handleFiles(files) {
       if (data.files && data.files.length > 0) { uploadedImages.push(...data.files); renderImagePreviews(); }
     } catch (err) { alert('อัปโหลดไม่สำเร็จ: ' + err.message); }
   }
-  if (firstFile) runOCR(firstFile);
+  if (firstFile && document.getElementById('ocr-enabled').checked) runOCR(firstFile);
 }
 
 function renderImagePreviews() {
