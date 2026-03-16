@@ -345,7 +345,16 @@ app.delete('/api/logs/:id', requireAuth, async (req, res) => {
   if (result.rows[0]) {
     try {
       const images = typeof result.rows[0].images === 'string' ? JSON.parse(result.rows[0].images) : result.rows[0].images;
-      images.forEach(img => { const p = path.join(__dirname, 'public', img.path); if (fs.existsSync(p)) fs.unlinkSync(p); });
+      for (const img of images) {
+        if (process.env.CLOUDINARY_URL && img.filename && img.filename.includes('/')) {
+          // Delete from Cloudinary
+          await cloudinary.uploader.destroy(img.filename).catch(() => {});
+        } else if (img.path) {
+          // Delete local file
+          const p = path.join(__dirname, 'public', img.path);
+          if (fs.existsSync(p)) fs.unlinkSync(p);
+        }
+      }
     } catch {}
   }
   await pool.query('DELETE FROM work_logs WHERE id=$1 AND user_id=$2', [req.params.id, req.session.userId]);
