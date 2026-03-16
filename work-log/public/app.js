@@ -791,14 +791,21 @@ async function clockAction(type) {
   }
 }
 
-function captureAttendancePhoto() {
-  return new Promise((resolve) => {
-    // Check if mobile
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+async function hasCamera() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.some(d => d.kind === 'videoinput');
+  } catch { return false; }
+}
 
-    if (isMobile) {
-      // Mobile: open camera directly
-      const input = document.getElementById('attendance-camera');
+function captureAttendancePhoto() {
+  return new Promise(async (resolve) => {
+    const cameraAvailable = await hasCamera();
+
+    if (cameraAvailable) {
+      // Has camera (mobile or desktop with webcam): choose camera or file
+      const choice = confirm('เลือกวิธีถ่ายภาพ:\n\nกด OK = 📷 เปิดกล้องถ่ายภาพ\nกด Cancel = 📁 เลือกไฟล์จากเครื่อง');
+      const input = document.getElementById(choice ? 'attendance-camera' : 'attendance-file');
       input.onchange = () => {
         const file = input.files[0];
         input.value = '';
@@ -808,7 +815,7 @@ function captureAttendancePhoto() {
       input.click();
       setTimeout(() => { if (!input.files.length) resolve(null); }, 60000);
     } else {
-      // Desktop: show choice dialog
+      // No camera: choose file or skip
       const choice = confirm('ต้องการแนบรูปภาพไหม?\n\nกด OK = เลือกไฟล์รูป\nกด Cancel = ไม่แนบรูป');
       if (!choice) return resolve(null);
 
