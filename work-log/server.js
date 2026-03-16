@@ -9,6 +9,13 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 const XLSX = require('xlsx');
+const cloudinary = require('cloudinary').v2;
+
+// ========== Cloudinary ==========
+if (process.env.CLOUDINARY_URL) {
+  cloudinary.config(); // auto-reads CLOUDINARY_URL env
+  console.log('☁️ Cloudinary connected:', cloudinary.config().cloud_name);
+}
 
 const app = express();
 app.set('trust proxy', 1);
@@ -69,7 +76,7 @@ app.use(helmet({
       defaultSrc: ["'self'"],
       scriptSrc: ["'self'", "'wasm-unsafe-eval'", "https://cdn.jsdelivr.net"],
       styleSrc: ["'self'", "'unsafe-inline'"],
-      imgSrc: ["'self'", "data:", "blob:"],
+      imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
       workerSrc: ["'self'", "blob:", "https://cdn.jsdelivr.net"],
       connectSrc: ["'self'", "data:", "blob:", "https://cdn.jsdelivr.net", "https://tessdata.projectnaptha.com"],
       childSrc: ["'self'", "blob:"]
@@ -94,20 +101,9 @@ const apiLimiter = rateLimit({
   legacyHeaders: false
 });
 
-// Ensure uploads directory exists
-const uploadsDir = path.join(__dirname, 'public', 'uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-
-// Multer setup
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadsDir),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, Date.now() + '-' + Math.round(Math.random() * 1000) + ext);
-  }
-});
+// Multer setup (memory storage for Cloudinary upload)
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowed = /jpeg|jpg|png|gif|webp/;
@@ -240,9 +236,35 @@ app.delete('/api/categories/:id', requireAuth, async (req, res) => {
 
 // ========== UPLOAD ==========
 
-app.post('/api/upload', requireAuth, upload.array('images', 5), (req, res) => {
-  const files = req.files.map(f => ({ filename: f.filename, path: '/uploads/' + f.filename, originalname: f.originalname }));
-  res.json({ files });
+app.post('/api/upload', requireAuth, upload.array('images', 5), async (req, res) => {
+  try {
+    const files = [];
+    for (const f of req.files) {
+      if (process.env.CLOUDINARY_URL) {
+        // Upload to Cloudinary
+        const result = await new Promise((resolve, reject) => {
+          const stream = cloudinary.uploader.upload_stream(
+            { folder: 'work-log', resource_type: 'image' },
+            (err, result) => err ? reject(err) : resolve(result)
+          );
+          stream.end(f.buffer);
+        });
+        files.push({ filename: result.public_id, path: result.secure_url, originalname: f.originalname });
+      } else {
+        // Fallback: save locally
+        const uploadsDir = path.join(__dirname, 'public', 'uploads');
+        if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+        const ext = path.extname(f.originalname);
+        const filename = Date.now() + '-' + Math.round(Math.random() * 1000) + ext;
+        fs.writeFileSync(path.join(uploadsDir, filename), f.buffer);
+        files.push({ filename, path: '/uploads/' + filename, originalname: f.originalname });
+      }
+    }
+    res.json({ files });
+  } catch (err) {
+    console.error('Upload error:', err);
+    res.status(500).json({ error: 'อัปโหลดไม่สำเร็จ' });
+  }
 });
 
 // ========== WORK LOGS API ==========
