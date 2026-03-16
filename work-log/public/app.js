@@ -115,7 +115,12 @@ async function showApp() {
   initAttendance();
   loadTodayLogs();
 
-  // Show admin tab if user is admin
+  // Show HR tab for hr and admin
+  if (currentUser.role === 'hr' || currentUser.role === 'admin') {
+    document.getElementById('tab-btn-hr').style.display = '';
+    initHR();
+  }
+  // Show admin tab for admin only
   if (currentUser.role === 'admin') {
     document.getElementById('tab-btn-admin').style.display = '';
     initAdmin();
@@ -755,6 +760,71 @@ async function loadAttendanceHistory() {
   container.innerHTML = html;
 }
 
+// ========== HR ==========
+function initHR() {
+  document.getElementById('btn-hr-att-summary').addEventListener('click', loadHRAttSummary);
+  document.getElementById('btn-hr-att-detail').addEventListener('click', loadHRAttDetail);
+
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('hr-att-month').value = today.substring(0, 7);
+  document.getElementById('hr-att-date').value = today;
+}
+
+async function loadHRAttSummary() {
+  const month = document.getElementById('hr-att-month').value;
+  if (!month) return;
+  const res = await fetch('/api/admin/attendance/summary?month=' + month);
+  const data = await res.json();
+  const container = document.getElementById('hr-att-summary');
+
+  if (!data.length) { container.innerHTML = '<div class="empty-state">ไม่มีข้อมูล</div>'; return; }
+
+  container.innerHTML = `
+    <table class="admin-table">
+      <tr><th>ชื่อ</th><th>ลงเวลา (วัน)</th><th>🟢 ตรงเวลา</th><th>🟡 สาย</th><th>ลงออก</th></tr>
+      ${data.map(u => `<tr>
+        <td>${u.name}</td>
+        <td>${u.total_days}</td>
+        <td class="text-success">${u.on_time}</td>
+        <td class="text-warning">${u.late}</td>
+        <td>${u.clocked_out}</td>
+      </tr>`).join('')}
+    </table>`;
+}
+
+async function loadHRAttDetail() {
+  const date = document.getElementById('hr-att-date').value;
+  if (!date) return;
+  const res = await fetch('/api/admin/attendance?date=' + date);
+  const records = await res.json();
+  const container = document.getElementById('hr-att-detail');
+
+  if (!records.length) { container.innerHTML = '<div class="empty-state">ไม่มีข้อมูลวันนี้</div>'; return; }
+
+  container.innerHTML = records.map(r => {
+    const statusClass = r.status === 'ตรงเวลา' ? 'att-ontime' : 'att-late';
+    const statusIcon = r.status === 'ตรงเวลา' ? '🟢' : '🟡';
+    return `<div class="att-admin-card">
+      <div class="att-admin-header">
+        <strong>👤 ${r.user_name}</strong>
+        <span class="att-badge ${statusClass}">${statusIcon} ${r.status}</span>
+      </div>
+      <div class="att-admin-body">
+        <div class="att-admin-row">
+          <span>🟢 เข้า: <strong>${r.clock_in_time || '-'}</strong></span>
+          ${r.clock_in_photo ? `<img src="${r.clock_in_photo}" class="att-photo-sm" data-action="open-modal" data-src="${r.clock_in_photo}">` : ''}
+          ${r.clock_in_location ? `<span class="att-location-sm">📍 ${r.clock_in_location}</span>` : ''}
+        </div>
+        <div class="att-admin-row">
+          <span>🔴 ออก: <strong>${r.clock_out_time || '-'}</strong></span>
+          ${r.clock_out_photo ? `<img src="${r.clock_out_photo}" class="att-photo-sm" data-action="open-modal" data-src="${r.clock_out_photo}">` : ''}
+          ${r.clock_out_location ? `<span class="att-location-sm">📍 ${r.clock_out_location}</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 // ========== Admin ==========
 function initAdmin() {
   document.getElementById('btn-admin-att').addEventListener('click', loadAdminAttSummary);
@@ -787,10 +857,11 @@ async function loadAdminUsers() {
       <tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์</th><th>จัดการ</th></tr>
       ${users.map(u => `<tr>
         <td>${u.name}</td><td>${u.email}</td>
-        <td><span class="att-badge ${u.role === 'admin' ? 'att-ontime' : ''}">${u.role === 'admin' ? '👑 Admin' : '👤 User'}</span></td>
+        <td><span class="att-badge ${u.role === 'admin' ? 'att-ontime' : u.role === 'hr' ? 'att-hr' : ''}">${u.role === 'admin' ? '👑 Admin' : u.role === 'hr' ? '🏢 ฝ่ายบุคคล' : '👤 User'}</span></td>
         <td><select data-action="change-role" data-id="${u.id}">
-          <option value="user" ${u.role === 'user' ? 'selected' : ''}>User</option>
-          <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+          <option value="user" ${u.role === 'user' ? 'selected' : ''}>👤 User</option>
+          <option value="hr" ${u.role === 'hr' ? 'selected' : ''}>🏢 ฝ่ายบุคคล</option>
+          <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>👑 Admin</option>
         </select></td>
       </tr>`).join('')}
     </table>`;

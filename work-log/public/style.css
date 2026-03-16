@@ -1052,6 +1052,7 @@ textarea {
 .att-ontime { background: #e6f4ea; color: #137333; }
 .att-late { background: #fef3e0; color: #e37400; }
 .att-done { background: #e6f4ea; color: #137333; }
+.att-hr { background: #e8eaf6; color: #3949ab; }
 .attendance-actions { display: flex; gap: 16px; justify-content: center; margin: 24px 0; flex-wrap: wrap; }
 .btn-lg { padding: 20px 32px; font-size: 18px; border-radius: 16px; display: flex; flex-direction: column; align-items: center; gap: 4px; border: none; cursor: pointer; min-width: 160px; transition: all 0.2s; }
 .btn-lg small { font-size: 12px; opacity: 0.8; }

@@ -83,6 +83,7 @@
       <button class="tab" data-tab="pending">⏳ งานค้าง</button>
       <button class="tab" data-tab="summary">📊 สรุป</button>
       <button class="tab" data-tab="settings">⚙️ ตั้งค่า</button>
+      <button class="tab" data-tab="hr" id="tab-btn-hr" style="display:none">🏢 ฝ่ายบุคคล</button>
       <button class="tab" data-tab="admin" id="tab-btn-admin" style="display:none">👑 Admin</button>
     </nav>
 
@@ -227,6 +228,37 @@
           <button class="btn btn-primary" id="btn-load-attendance">🔍 ดู</button>
         </div>
         <div id="attendance-list"></div>
+      </div>
+    </section>
+
+    <!-- Tab: HR (visible to HR and Admin) -->
+    <section id="tab-hr" class="tab-content">
+      <div class="admin-card">
+        <h2>🏢 ฝ่ายบุคคล - ข้อมูลลงเวลา</h2>
+
+        <div class="admin-section">
+          <h3>📊 สรุปลงเวลารายเดือน</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label>เดือน</label>
+              <input type="month" id="hr-att-month">
+            </div>
+            <button class="btn btn-primary" id="btn-hr-att-summary">📊 ดูสรุป</button>
+          </div>
+          <div id="hr-att-summary"></div>
+        </div>
+
+        <div class="admin-section">
+          <h3>📋 รายละเอียดลงเวลารายวัน</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label>วันที่</label>
+              <input type="date" id="hr-att-date">
+            </div>
+            <button class="btn btn-primary" id="btn-hr-att-detail">🔍 ดู</button>
+          </div>
+          <div id="hr-att-detail"></div>
+        </div>
       </div>
     </section>
 

@@ -524,7 +524,16 @@ function requireAdmin(req, res, next) {
   });
 }
 
-app.get('/api/admin/attendance', requireAdmin, async (req, res) => {
+function requireHROrAdmin(req, res, next) {
+  if (!req.session.userId) return res.status(401).json({ error: 'กรุณาเข้าสู่ระบบ' });
+  pool.query('SELECT role FROM users WHERE id=$1', [req.session.userId]).then(result => {
+    const role = result.rows[0] && result.rows[0].role;
+    if (role !== 'admin' && role !== 'hr') return res.status(403).json({ error: 'ไม่มีสิทธิ์เข้าถึง' });
+    next();
+  });
+}
+
+app.get('/api/admin/attendance', requireHROrAdmin, async (req, res) => {
   const { date, month } = req.query;
   let sql = `SELECT a.*, u.name as user_name, u.email as user_email
              FROM attendance a JOIN users u ON a.user_id = u.id`;
@@ -536,7 +545,7 @@ app.get('/api/admin/attendance', requireAdmin, async (req, res) => {
   res.json(result.rows);
 });
 
-app.get('/api/admin/attendance/summary', requireAdmin, async (req, res) => {
+app.get('/api/admin/attendance/summary', requireHROrAdmin, async (req, res) => {
   const { month } = req.query;
   if (!month) return res.json([]);
   const result = await pool.query(`
@@ -592,7 +601,7 @@ app.get('/api/admin/logs/summary', requireAdmin, async (req, res) => {
 
 app.put('/api/admin/users/:id/role', requireAdmin, async (req, res) => {
   const { role } = req.body;
-  if (!['user', 'admin'].includes(role)) return res.status(400).json({ error: 'Role ไม่ถูกต้อง' });
+  if (!['user', 'admin', 'hr'].includes(role)) return res.status(400).json({ error: 'Role ไม่ถูกต้อง' });
   await pool.query('UPDATE users SET role=$1 WHERE id=$2', [role, req.params.id]);
   res.json({ success: true });
 });
