@@ -78,10 +78,12 @@
     <!-- Tab Navigation -->
     <nav class="tabs">
       <button class="tab active" data-tab="record">📝 บันทึก</button>
+      <button class="tab" data-tab="attendance">🕐 ลงเวลา</button>
       <button class="tab" data-tab="list">📄 รายการ</button>
       <button class="tab" data-tab="pending">⏳ งานค้าง</button>
       <button class="tab" data-tab="summary">📊 สรุป</button>
       <button class="tab" data-tab="settings">⚙️ ตั้งค่า</button>
+      <button class="tab" data-tab="admin" id="tab-btn-admin" style="display:none">👑 Admin</button>
     </nav>
 
     <!-- Tab: Record -->
@@ -186,6 +188,81 @@
       <div class="today-section">
         <h2>📅 งานวันนี้</h2>
         <div id="today-logs"></div>
+      </div>
+    </section>
+
+    <!-- Tab: Attendance -->
+    <section id="tab-attendance" class="tab-content">
+      <div class="attendance-card">
+        <h2>🕐 ลงเวลาทำงาน</h2>
+        <div id="attendance-clock" class="attendance-clock"></div>
+        <div id="attendance-status" class="attendance-status"></div>
+
+        <div id="attendance-actions" class="attendance-actions">
+          <input type="file" id="attendance-photo" accept="image/*" capture="user" hidden>
+
+          <button class="btn btn-lg btn-clock-in" id="btn-clock-in">
+            <span class="clock-icon">🟢</span>
+            <span>ลงเวลาเข้า</span>
+            <small>ก่อน 08:30 น.</small>
+          </button>
+
+          <button class="btn btn-lg btn-clock-out" id="btn-clock-out" disabled>
+            <span class="clock-icon">🔴</span>
+            <span>ลงเวลาออก</span>
+            <small>ตั้งแต่ 16:30 น.</small>
+          </button>
+        </div>
+
+        <div id="attendance-today" class="attendance-today"></div>
+      </div>
+
+      <div class="attendance-history">
+        <h3>📅 ประวัติลงเวลา</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label>เดือน</label>
+            <input type="month" id="attendance-month">
+          </div>
+          <button class="btn btn-primary" id="btn-load-attendance">🔍 ดู</button>
+        </div>
+        <div id="attendance-list"></div>
+      </div>
+    </section>
+
+    <!-- Tab: Admin (visible to admin only) -->
+    <section id="tab-admin" class="tab-content">
+      <div class="admin-card">
+        <h2>👑 Admin - จัดการระบบ</h2>
+
+        <div class="admin-section">
+          <h3>👥 จัดการผู้ใช้</h3>
+          <div id="admin-users-list"></div>
+        </div>
+
+        <div class="admin-section">
+          <h3>🕐 สรุปลงเวลาทุกคน</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label>เดือน</label>
+              <input type="month" id="admin-att-month">
+            </div>
+            <button class="btn btn-primary" id="btn-admin-att">📊 ดูสรุป</button>
+          </div>
+          <div id="admin-att-summary"></div>
+        </div>
+
+        <div class="admin-section">
+          <h3>📋 รายละเอียดลงเวลา</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label>วันที่</label>
+              <input type="date" id="admin-att-date">
+            </div>
+            <button class="btn btn-primary" id="btn-admin-att-detail">🔍 ดู</button>
+          </div>
+          <div id="admin-att-detail"></div>
+        </div>
       </div>
     </section>
 

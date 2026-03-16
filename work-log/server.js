@@ -63,6 +63,36 @@ async function initDB() {
         updated_at TIMESTAMPTZ DEFAULT NOW()
       )
     `);
+    // Attendance table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS attendance (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        date TEXT NOT NULL,
+        clock_in_time TEXT,
+        clock_in_photo TEXT,
+        clock_in_lat DOUBLE PRECISION,
+        clock_in_lng DOUBLE PRECISION,
+        clock_in_location TEXT DEFAULT '',
+        clock_out_time TEXT,
+        clock_out_photo TEXT,
+        clock_out_lat DOUBLE PRECISION,
+        clock_out_lng DOUBLE PRECISION,
+        clock_out_location TEXT DEFAULT '',
+        status TEXT DEFAULT 'ตรงเวลา',
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, date)
+      )
+    `);
+
+    // Add role column to users (if not exists)
+    await client.query(`
+      DO $$ BEGIN
+        ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user';
+      EXCEPTION WHEN duplicate_column THEN NULL;
+      END $$
+    `);
+
     console.log('✅ Database tables ready');
   } finally {
     client.release();
@@ -199,14 +229,6 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 app.post('/api/auth/logout', (req, res) => {
   req.session = null;
   res.json({ success: true });
-});
-
-app.get('/api/auth/me', async (req, res) => {
-  if (!req.session.userId) return res.json(null);
-  try {
-    const result = await pool.query('SELECT id, name, email FROM users WHERE id = $1', [req.session.userId]);
-    res.json(result.rows[0] || null);
-  } catch { res.json(null); }
 });
 
 // ========== CATEGORIES API ==========
@@ -373,6 +395,170 @@ app.get('/api/pending', requireAuth, async (req, res) => {
     [req.session.userId]
   );
   res.json(result.rows);
+});
+
+// ========== ATTENDANCE API ==========
+
+app.get('/api/attendance/today', requireAuth, async (req, res) => {
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+  const result = await pool.query('SELECT * FROM attendance WHERE user_id=$1 AND date=$2', [req.session.userId, today]);
+  res.json(result.rows[0] || null);
+});
+
+app.get('/api/attendance/history', requireAuth, async (req, res) => {
+  const { month } = req.query;
+  let sql = 'SELECT * FROM attendance WHERE user_id=$1';
+  const params = [req.session.userId];
+  if (month) { sql += " AND to_char(date::date, 'YYYY-MM')=$2"; params.push(month); }
+  sql += ' ORDER BY date DESC';
+  const result = await pool.query(sql, params);
+  res.json(result.rows);
+});
+
+app.post('/api/attendance/clock-in', requireAuth, upload.single('photo'), async (req, res) => {
+  try {
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+    const now = new Date().toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const lat = parseFloat(req.body.lat) || null;
+    const lng = parseFloat(req.body.lng) || null;
+    const location = req.body.location || '';
+
+    // Check if already clocked in
+    const existing = await pool.query('SELECT id FROM attendance WHERE user_id=$1 AND date=$2', [req.session.userId, today]);
+    if (existing.rows.length > 0) return res.status(400).json({ error: 'ลงเวลาเข้าแล้ววันนี้' });
+
+    // Upload photo to Cloudinary
+    let photoUrl = '';
+    if (req.file && process.env.CLOUDINARY_URL) {
+      const result = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: 'work-log/attendance', resource_type: 'image' },
+          (err, result) => err ? reject(err) : resolve(result)
+        );
+        stream.end(req.file.buffer);
+      });
+      photoUrl = result.secure_url;
+    }
+
+    // Determine status: before 08:30 = ตรงเวลา, after = สาย
+    const timeParts = now.split(':');
+    const hourMin = parseInt(timeParts[0]) * 100 + parseInt(timeParts[1]);
+    const status = hourMin <= 830 ? 'ตรงเวลา' : 'สาย';
+
+    const result = await pool.query(
+      `INSERT INTO attendance (user_id, date, clock_in_time, clock_in_photo, clock_in_lat, clock_in_lng, clock_in_location, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [req.session.userId, today, now, photoUrl, lat, lng, location, status]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error('Clock in error:', err);
+    res.status(500).json({ error: 'เกิดข้อผิดพลาด' });
+  }
+});
+
+app.post('/api/attendance/clock-out', requireAuth, upload.single('photo'), async (req, res) => {
+  try {
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Bangkok' });
+    const now = new Date().toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const lat = parseFloat(req.body.lat) || null;
+    const lng = parseFloat(req.body.lng) || null;
+    const location = req.body.location || '';
+
+    // Check if clocked in
+    const existing = await pool.query('SELECT id FROM attendance WHERE user_id=$1 AND date=$2', [req.session.userId, today]);
+    if (existing.rows.length === 0) return res.status(400).json({ error: 'ยังไม่ได้ลงเวลาเข้า' });
+
+    // Check if already clocked out
+    const record = await pool.query('SELECT clock_out_time FROM attendance WHERE user_id=$1 AND date=$2', [req.session.userId, today]);
+    if (record.rows[0].clock_out_time) return res.status(400).json({ error: 'ลงเวลาออกแล้ววันนี้' });
+
+    // Check minimum time: 16:30
+    const timeParts = now.split(':');
+    const hourMin = parseInt(timeParts[0]) * 100 + parseInt(timeParts[1]);
+    if (hourMin < 1630) return res.status(400).json({ error: 'ยังไม่ถึงเวลาออกงาน (16:30 น.)' });
+
+    // Upload photo to Cloudinary
+    let photoUrl = '';
+    if (req.file && process.env.CLOUDINARY_URL) {
+      const result = await new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          { folder: 'work-log/attendance', resource_type: 'image' },
+          (err, result) => err ? reject(err) : resolve(result)
+        );
+        stream.end(req.file.buffer);
+      });
+      photoUrl = result.secure_url;
+    }
+
+    const result = await pool.query(
+      `UPDATE attendance SET clock_out_time=$1, clock_out_photo=$2, clock_out_lat=$3, clock_out_lng=$4, clock_out_location=$5
+       WHERE user_id=$6 AND date=$7 RETURNING *`,
+      [now, photoUrl, lat, lng, location, req.session.userId, today]
+    );
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Clock out error:', err);
+    res.status(500).json({ error: 'เกิดข้อผิดพลาด' });
+  }
+});
+
+// ========== ADMIN API ==========
+
+function requireAdmin(req, res, next) {
+  if (!req.session.userId) return res.status(401).json({ error: 'กรุณาเข้าสู่ระบบ' });
+  pool.query('SELECT role FROM users WHERE id=$1', [req.session.userId]).then(result => {
+    if (!result.rows[0] || result.rows[0].role !== 'admin') return res.status(403).json({ error: 'ไม่มีสิทธิ์เข้าถึง' });
+    next();
+  });
+}
+
+app.get('/api/admin/attendance', requireAdmin, async (req, res) => {
+  const { date, month } = req.query;
+  let sql = `SELECT a.*, u.name as user_name, u.email as user_email
+             FROM attendance a JOIN users u ON a.user_id = u.id`;
+  const params = [];
+  if (date) { sql += ' WHERE a.date=$1'; params.push(date); }
+  else if (month) { sql += " WHERE to_char(a.date::date, 'YYYY-MM')=$1"; params.push(month); }
+  sql += ' ORDER BY a.date DESC, u.name ASC';
+  const result = await pool.query(sql, params);
+  res.json(result.rows);
+});
+
+app.get('/api/admin/attendance/summary', requireAdmin, async (req, res) => {
+  const { month } = req.query;
+  if (!month) return res.json([]);
+  const result = await pool.query(`
+    SELECT u.name, u.email,
+      COUNT(*) as total_days,
+      COUNT(CASE WHEN a.status='ตรงเวลา' THEN 1 END) as on_time,
+      COUNT(CASE WHEN a.status='สาย' THEN 1 END) as late,
+      COUNT(CASE WHEN a.clock_out_time IS NOT NULL THEN 1 END) as clocked_out
+    FROM attendance a JOIN users u ON a.user_id = u.id
+    WHERE to_char(a.date::date, 'YYYY-MM')=$1
+    GROUP BY u.id, u.name, u.email ORDER BY u.name
+  `, [month]);
+  res.json(result.rows);
+});
+
+app.get('/api/admin/users', requireAdmin, async (req, res) => {
+  const result = await pool.query('SELECT id, name, email, role, created_at FROM users ORDER BY id');
+  res.json(result.rows);
+});
+
+app.put('/api/admin/users/:id/role', requireAdmin, async (req, res) => {
+  const { role } = req.body;
+  if (!['user', 'admin'].includes(role)) return res.status(400).json({ error: 'Role ไม่ถูกต้อง' });
+  await pool.query('UPDATE users SET role=$1 WHERE id=$2', [role, req.params.id]);
+  res.json({ success: true });
+});
+
+app.get('/api/auth/me', async (req, res) => {
+  if (!req.session.userId) return res.json(null);
+  try {
+    const result = await pool.query('SELECT id, name, email, role FROM users WHERE id = $1', [req.session.userId]);
+    res.json(result.rows[0] || null);
+  } catch { res.json(null); }
 });
 
 // ========== EXPORT API ==========

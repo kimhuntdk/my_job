@@ -112,7 +112,14 @@ async function showApp() {
   initFilter();
   initSummary();
   initSettings();
+  initAttendance();
   loadTodayLogs();
+
+  // Show admin tab if user is admin
+  if (currentUser.role === 'admin') {
+    document.getElementById('tab-btn-admin').style.display = '';
+    initAdmin();
+  }
 }
 
 // ========== Categories ==========
@@ -594,3 +601,251 @@ function initModal() {
 }
 function openModal(src) { document.getElementById('modal-image').src = src; document.getElementById('image-modal').style.display = 'flex'; }
 function closeModal() { document.getElementById('image-modal').style.display = 'none'; }
+
+// ========== Attendance ==========
+let attendanceClock;
+
+function initAttendance() {
+  // Live clock
+  updateClock();
+  attendanceClock = setInterval(updateClock, 1000);
+
+  document.getElementById('btn-clock-in').addEventListener('click', () => clockAction('in'));
+  document.getElementById('btn-clock-out').addEventListener('click', () => clockAction('out'));
+  document.getElementById('btn-load-attendance').addEventListener('click', loadAttendanceHistory);
+
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('attendance-month').value = today.substring(0, 7);
+
+  loadTodayAttendance();
+}
+
+function updateClock() {
+  const now = new Date();
+  const time = now.toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour12: false });
+  const dateStr = now.toLocaleDateString('th-TH', { timeZone: 'Asia/Bangkok', weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const el = document.getElementById('attendance-clock');
+  if (el) el.innerHTML = `<div class="clock-time">${time}</div><div class="clock-date">${dateStr}</div>`;
+}
+
+async function loadTodayAttendance() {
+  const res = await fetch('/api/attendance/today');
+  const data = await res.json();
+  const statusEl = document.getElementById('attendance-status');
+  const todayEl = document.getElementById('attendance-today');
+  const btnIn = document.getElementById('btn-clock-in');
+  const btnOut = document.getElementById('btn-clock-out');
+
+  if (!data) {
+    statusEl.innerHTML = '<div class="att-badge att-none">📝 ยังไม่ได้ลงเวลาเข้า</div>';
+    btnIn.disabled = false;
+    btnOut.disabled = true;
+    todayEl.innerHTML = '';
+    return;
+  }
+
+  const statusIcon = data.status === 'ตรงเวลา' ? '🟢' : '🟡';
+  const statusClass = data.status === 'ตรงเวลา' ? 'att-ontime' : 'att-late';
+
+  let html = `<div class="att-record">
+    <div class="att-row"><span class="att-label">เข้างาน:</span> <strong>${data.clock_in_time}</strong> <span class="att-badge ${statusClass}">${statusIcon} ${data.status}</span></div>`;
+
+  if (data.clock_in_photo) html += `<img src="${data.clock_in_photo}" class="att-photo" data-action="open-modal" data-src="${data.clock_in_photo}">`;
+  if (data.clock_in_location) html += `<div class="att-location">📍 ${data.clock_in_location}</div>`;
+
+  if (data.clock_out_time) {
+    html += `<div class="att-row"><span class="att-label">ออกงาน:</span> <strong>${data.clock_out_time}</strong></div>`;
+    if (data.clock_out_photo) html += `<img src="${data.clock_out_photo}" class="att-photo" data-action="open-modal" data-src="${data.clock_out_photo}">`;
+    if (data.clock_out_location) html += `<div class="att-location">📍 ${data.clock_out_location}</div>`;
+  }
+  html += '</div>';
+
+  statusEl.innerHTML = data.clock_out_time
+    ? '<div class="att-badge att-done">✅ ลงเวลาครบแล้ววันนี้</div>'
+    : `<div class="att-badge ${statusClass}">${statusIcon} ลงเวลาเข้าแล้ว (${data.status})</div>`;
+
+  btnIn.disabled = true;
+  btnOut.disabled = !!data.clock_out_time;
+  todayEl.innerHTML = html;
+}
+
+async function clockAction(type) {
+  try {
+    // Get GPS
+    let lat = null, lng = null, location = '';
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10000 });
+      });
+      lat = pos.coords.latitude;
+      lng = pos.coords.longitude;
+      location = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+    } catch { location = 'ไม่สามารถระบุตำแหน่งได้'; }
+
+    // Take photo
+    const photoFile = await captureAttendancePhoto();
+
+    const formData = new FormData();
+    if (photoFile) formData.append('photo', photoFile);
+    formData.append('lat', lat || '');
+    formData.append('lng', lng || '');
+    formData.append('location', location);
+
+    const url = type === 'in' ? '/api/attendance/clock-in' : '/api/attendance/clock-out';
+    const res = await fetch(url, { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (!res.ok) { alert(data.error); return; }
+    loadTodayAttendance();
+  } catch (err) {
+    alert('เกิดข้อผิดพลาด: ' + err.message);
+  }
+}
+
+function captureAttendancePhoto() {
+  return new Promise((resolve) => {
+    const input = document.getElementById('attendance-photo');
+    input.onchange = () => {
+      const file = input.files[0];
+      input.value = '';
+      if (file) {
+        compressImage(file, 800, 0.6).then(resolve);
+      } else {
+        resolve(null);
+      }
+    };
+    input.click();
+    // If user cancels, resolve with null after timeout
+    setTimeout(() => { if (!input.files.length) resolve(null); }, 60000);
+  });
+}
+
+async function loadAttendanceHistory() {
+  const month = document.getElementById('attendance-month').value;
+  if (!month) return;
+  const res = await fetch('/api/attendance/history?month=' + month);
+  const records = await res.json();
+  const container = document.getElementById('attendance-list');
+
+  if (!records.length) { container.innerHTML = '<div class="empty-state">ไม่มีข้อมูล</div>'; return; }
+
+  // Stats
+  const onTime = records.filter(r => r.status === 'ตรงเวลา').length;
+  const late = records.filter(r => r.status === 'สาย').length;
+
+  let html = `<div class="att-stats">
+    <span class="stat-chip chip-total">ทั้งหมด ${records.length} วัน</span>
+    <span class="stat-chip chip-ontime">🟢 ตรงเวลา ${onTime}</span>
+    <span class="stat-chip chip-late">🟡 สาย ${late}</span>
+  </div>`;
+
+  html += records.map(r => {
+    const statusClass = r.status === 'ตรงเวลา' ? 'att-ontime' : 'att-late';
+    const statusIcon = r.status === 'ตรงเวลา' ? '🟢' : '🟡';
+    return `<div class="att-history-item ${statusClass}">
+      <div class="att-history-date">📅 ${r.date}</div>
+      <div class="att-history-times">
+        <span>เข้า: <strong>${r.clock_in_time || '-'}</strong></span>
+        <span>ออก: <strong>${r.clock_out_time || '-'}</strong></span>
+        <span class="att-badge ${statusClass}">${statusIcon} ${r.status}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = html;
+}
+
+// ========== Admin ==========
+function initAdmin() {
+  document.getElementById('btn-admin-att').addEventListener('click', loadAdminAttSummary);
+  document.getElementById('btn-admin-att-detail').addEventListener('click', loadAdminAttDetail);
+
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('admin-att-month').value = today.substring(0, 7);
+  document.getElementById('admin-att-date').value = today;
+
+  loadAdminUsers();
+}
+
+async function loadAdminUsers() {
+  const res = await fetch('/api/admin/users');
+  const users = await res.json();
+  document.getElementById('admin-users-list').innerHTML = `
+    <table class="admin-table">
+      <tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์</th><th>จัดการ</th></tr>
+      ${users.map(u => `<tr>
+        <td>${u.name}</td><td>${u.email}</td>
+        <td><span class="att-badge ${u.role === 'admin' ? 'att-ontime' : ''}">${u.role === 'admin' ? '👑 Admin' : '👤 User'}</span></td>
+        <td><select data-action="change-role" data-id="${u.id}">
+          <option value="user" ${u.role === 'user' ? 'selected' : ''}>User</option>
+          <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+        </select></td>
+      </tr>`).join('')}
+    </table>`;
+
+  // Attach role change events
+  document.querySelectorAll('[data-action="change-role"]').forEach(sel => {
+    sel.addEventListener('change', async () => {
+      await fetch(`/api/admin/users/${sel.dataset.id}/role`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: sel.value })
+      });
+      loadAdminUsers();
+    });
+  });
+}
+
+async function loadAdminAttSummary() {
+  const month = document.getElementById('admin-att-month').value;
+  if (!month) return;
+  const res = await fetch('/api/admin/attendance/summary?month=' + month);
+  const data = await res.json();
+  const container = document.getElementById('admin-att-summary');
+
+  if (!data.length) { container.innerHTML = '<div class="empty-state">ไม่มีข้อมูล</div>'; return; }
+
+  container.innerHTML = `
+    <table class="admin-table">
+      <tr><th>ชื่อ</th><th>ลงเวลา (วัน)</th><th>🟢 ตรงเวลา</th><th>🟡 สาย</th><th>ลงออก</th></tr>
+      ${data.map(u => `<tr>
+        <td>${u.name}</td>
+        <td>${u.total_days}</td>
+        <td class="text-success">${u.on_time}</td>
+        <td class="text-warning">${u.late}</td>
+        <td>${u.clocked_out}</td>
+      </tr>`).join('')}
+    </table>`;
+}
+
+async function loadAdminAttDetail() {
+  const date = document.getElementById('admin-att-date').value;
+  if (!date) return;
+  const res = await fetch('/api/admin/attendance?date=' + date);
+  const records = await res.json();
+  const container = document.getElementById('admin-att-detail');
+
+  if (!records.length) { container.innerHTML = '<div class="empty-state">ไม่มีข้อมูลวันนี้</div>'; return; }
+
+  container.innerHTML = records.map(r => {
+    const statusClass = r.status === 'ตรงเวลา' ? 'att-ontime' : 'att-late';
+    const statusIcon = r.status === 'ตรงเวลา' ? '🟢' : '🟡';
+    return `<div class="att-admin-card">
+      <div class="att-admin-header">
+        <strong>👤 ${r.user_name}</strong>
+        <span class="att-badge ${statusClass}">${statusIcon} ${r.status}</span>
+      </div>
+      <div class="att-admin-body">
+        <div class="att-admin-row">
+          <span>🟢 เข้า: <strong>${r.clock_in_time || '-'}</strong></span>
+          ${r.clock_in_photo ? `<img src="${r.clock_in_photo}" class="att-photo-sm" data-action="open-modal" data-src="${r.clock_in_photo}">` : ''}
+          ${r.clock_in_location ? `<span class="att-location-sm">📍 ${r.clock_in_location}</span>` : ''}
+        </div>
+        <div class="att-admin-row">
+          <span>🔴 ออก: <strong>${r.clock_out_time || '-'}</strong></span>
+          ${r.clock_out_photo ? `<img src="${r.clock_out_photo}" class="att-photo-sm" data-action="open-modal" data-src="${r.clock_out_photo}">` : ''}
+          ${r.clock_out_location ? `<span class="att-location-sm">📍 ${r.clock_out_location}</span>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
