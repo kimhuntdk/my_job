@@ -241,6 +241,36 @@
         </div>
 
         <div class="admin-section">
+          <h3>📝 สรุปภาระงานทุกคน</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label>เดือน</label>
+              <input type="month" id="admin-logs-month">
+            </div>
+            <button class="btn btn-primary" id="btn-admin-logs-summary">📊 ดูสรุป</button>
+          </div>
+          <div id="admin-logs-summary"></div>
+        </div>
+
+        <div class="admin-section">
+          <h3>📋 รายละเอียดภาระงาน</h3>
+          <div class="form-row">
+            <div class="form-group">
+              <label>วันที่</label>
+              <input type="date" id="admin-logs-date">
+            </div>
+            <div class="form-group">
+              <label>เจ้าหน้าที่</label>
+              <select id="admin-logs-user">
+                <option value="">ทุกคน</option>
+              </select>
+            </div>
+            <button class="btn btn-primary" id="btn-admin-logs-detail">🔍 ดู</button>
+          </div>
+          <div id="admin-logs-detail"></div>
+        </div>
+
+        <div class="admin-section">
           <h3>🕐 สรุปลงเวลาทุกคน</h3>
           <div class="form-row">
             <div class="form-group">

@@ -759,10 +759,14 @@ async function loadAttendanceHistory() {
 function initAdmin() {
   document.getElementById('btn-admin-att').addEventListener('click', loadAdminAttSummary);
   document.getElementById('btn-admin-att-detail').addEventListener('click', loadAdminAttDetail);
+  document.getElementById('btn-admin-logs-summary').addEventListener('click', loadAdminLogsSummary);
+  document.getElementById('btn-admin-logs-detail').addEventListener('click', loadAdminLogsDetail);
 
   const today = new Date().toISOString().split('T')[0];
   document.getElementById('admin-att-month').value = today.substring(0, 7);
   document.getElementById('admin-att-date').value = today;
+  document.getElementById('admin-logs-month').value = today.substring(0, 7);
+  document.getElementById('admin-logs-date').value = today;
 
   loadAdminUsers();
 }
@@ -770,6 +774,14 @@ function initAdmin() {
 async function loadAdminUsers() {
   const res = await fetch('/api/admin/users');
   const users = await res.json();
+
+  // Populate user dropdown for logs filter
+  const sel = document.getElementById('admin-logs-user');
+  if (sel) {
+    while (sel.options.length > 1) sel.remove(1);
+    users.forEach(u => { const opt = document.createElement('option'); opt.value = u.id; opt.textContent = u.name; sel.appendChild(opt); });
+  }
+
   document.getElementById('admin-users-list').innerHTML = `
     <table class="admin-table">
       <tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์</th><th>จัดการ</th></tr>
@@ -793,6 +805,63 @@ async function loadAdminUsers() {
       loadAdminUsers();
     });
   });
+}
+
+async function loadAdminLogsSummary() {
+  const month = document.getElementById('admin-logs-month').value;
+  if (!month) return;
+  const res = await fetch('/api/admin/logs/summary?month=' + month);
+  const data = await res.json();
+  const container = document.getElementById('admin-logs-summary');
+
+  if (!data.length) { container.innerHTML = '<div class="empty-state">ไม่มีข้อมูล</div>'; return; }
+
+  container.innerHTML = `
+    <table class="admin-table">
+      <tr><th>ชื่อ</th><th>งานทั้งหมด</th><th>🟢 เสร็จ</th><th>🟡 รอ</th><th>🔵 กำลังทำ</th></tr>
+      ${data.map(u => `<tr>
+        <td>${u.name}</td>
+        <td><strong>${u.total}</strong></td>
+        <td class="text-success">${u.completed}</td>
+        <td class="text-warning">${u.waiting}</td>
+        <td style="color:#1a73e8;font-weight:600">${u.in_progress}</td>
+      </tr>`).join('')}
+    </table>`;
+}
+
+async function loadAdminLogsDetail() {
+  const date = document.getElementById('admin-logs-date').value;
+  const userId = document.getElementById('admin-logs-user').value;
+  const params = new URLSearchParams();
+  if (date) params.set('date', date);
+  if (userId) params.set('user_id', userId);
+
+  const res = await fetch('/api/admin/logs?' + params.toString());
+  const logs = await res.json();
+  const container = document.getElementById('admin-logs-detail');
+
+  if (!logs.length) { container.innerHTML = '<div class="empty-state">ไม่มีข้อมูล</div>'; return; }
+
+  container.innerHTML = logs.map(log => {
+    const images = log.images || [];
+    const imagesHtml = images.length ? `<div class="log-card-images">${images.map(img => `<img src="${img.path}" alt="" class="log-thumb" data-action="open-modal" data-src="${img.path}">`).join('')}</div>` : '';
+    return `
+      <div class="log-card status-${getStatusClass(log.status)}">
+        <div class="log-card-header">
+          <span class="log-card-title">${log.topic}</span>
+          ${getStatusBadge(log.status)}
+        </div>
+        <div class="log-card-meta">
+          <span class="badge badge-system">👤 ${log.user_name}</span>
+          <span>${getChannelIcon(log.channel)} ${log.channel}</span>
+          ${log.system_type ? `<span class="badge badge-system">🖥️ ${log.system_type}</span>` : ''}
+          <span>📅 ${log.date}</span>
+          ${log.reporter ? `<span>👤 ${log.reporter}</span>` : ''}
+        </div>
+        ${log.detail ? `<div class="log-card-detail">${log.detail}</div>` : ''}
+        ${imagesHtml}
+      </div>`;
+  }).join('');
 }
 
 async function loadAdminAttSummary() {

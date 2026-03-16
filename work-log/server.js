@@ -557,6 +557,39 @@ app.get('/api/admin/users', requireAdmin, async (req, res) => {
   res.json(result.rows);
 });
 
+// Admin: view all users' work logs
+app.get('/api/admin/logs', requireAdmin, async (req, res) => {
+  const { date, month, user_id, status, system_type } = req.query;
+  let sql = `SELECT w.*, u.name as user_name FROM work_logs w JOIN users u ON w.user_id = u.id WHERE 1=1`;
+  const params = [];
+  let paramCount = 0;
+  if (date) { paramCount++; sql += ` AND w.date = $${paramCount}`; params.push(date); }
+  if (month) { paramCount++; sql += ` AND to_char(w.date::date, 'YYYY-MM') = $${paramCount}`; params.push(month); }
+  if (user_id) { paramCount++; sql += ` AND w.user_id = $${paramCount}`; params.push(user_id); }
+  if (status) { paramCount++; sql += ` AND w.status = $${paramCount}`; params.push(status); }
+  if (system_type) { paramCount++; sql += ` AND w.system_type = $${paramCount}`; params.push(system_type); }
+  sql += ' ORDER BY w.date DESC, w.created_at DESC LIMIT 200';
+  const result = await pool.query(sql, params);
+  res.json(result.rows);
+});
+
+// Admin: work log summary per user
+app.get('/api/admin/logs/summary', requireAdmin, async (req, res) => {
+  const { month } = req.query;
+  if (!month) return res.json([]);
+  const result = await pool.query(`
+    SELECT u.name, u.email,
+      COUNT(*) as total,
+      COUNT(CASE WHEN w.status='เสร็จแล้ว' THEN 1 END) as completed,
+      COUNT(CASE WHEN w.status='รอดำเนินการ' THEN 1 END) as waiting,
+      COUNT(CASE WHEN w.status='กำลังดำเนินการ' THEN 1 END) as in_progress
+    FROM work_logs w JOIN users u ON w.user_id = u.id
+    WHERE to_char(w.date::date, 'YYYY-MM')=$1
+    GROUP BY u.id, u.name, u.email ORDER BY u.name
+  `, [month]);
+  res.json(result.rows);
+});
+
 app.put('/api/admin/users/:id/role', requireAdmin, async (req, res) => {
   const { role } = req.body;
   if (!['user', 'admin'].includes(role)) return res.status(400).json({ error: 'Role ไม่ถูกต้อง' });
