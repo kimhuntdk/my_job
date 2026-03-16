@@ -36,6 +36,7 @@ function initGlobalClicks() {
     else if (action === 'delete-log') deleteLog(id);
     else if (action === 'delete-cat') deleteCategory(id);
     else if (action === 'delete-tag') deleteTag(id);
+    else if (action === 'reset-password') resetUserPassword(id, btn.dataset.name);
     else if (action === 'open-modal') openModal(btn.dataset.src);
     else if (action === 'remove-image') removeImage(Number(id));
     else if (action === 'ocr-detail') useOCRAsDetail();
@@ -914,7 +915,7 @@ async function loadAdminUsers() {
 
   document.getElementById('admin-users-list').innerHTML = `
     <table class="admin-table">
-      <tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์</th><th>จัดการ</th></tr>
+      <tr><th>ชื่อ</th><th>อีเมล</th><th>สิทธิ์</th><th>จัดการ</th><th>รหัสผ่าน</th></tr>
       ${users.map(u => `<tr>
         <td>${u.name}</td><td>${u.email}</td>
         <td><span class="att-badge ${u.role === 'admin' ? 'att-ontime' : u.role === 'hr' ? 'att-hr' : ''}">${u.role === 'admin' ? '👑 Admin' : u.role === 'hr' ? '🏢 ฝ่ายบุคคล' : '👤 User'}</span></td>
@@ -923,6 +924,7 @@ async function loadAdminUsers() {
           <option value="hr" ${u.role === 'hr' ? 'selected' : ''}>🏢 ฝ่ายบุคคล</option>
           <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>👑 Admin</option>
         </select></td>
+        <td><button class="btn btn-sm btn-warning" data-action="reset-password" data-id="${u.id}" data-name="${u.name}">🔑 รีเซ็ต</button></td>
       </tr>`).join('')}
     </table>`;
 
@@ -936,6 +938,18 @@ async function loadAdminUsers() {
       loadAdminUsers();
     });
   });
+}
+
+async function resetUserPassword(userId, userName) {
+  const newPassword = prompt(`ตั้งรหัสผ่านใหม่ให้ "${userName}"\n(อย่างน้อย 6 ตัวอักษร)`);
+  if (!newPassword) return;
+  if (newPassword.length < 6) return showToast('รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร', 'error');
+  const res = await fetch(`/api/admin/users/${userId}/reset-password`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password: newPassword })
+  });
+  if (res.ok) showToast(`🔑 รีเซ็ตรหัสผ่านของ ${userName} สำเร็จ`);
+  else showToast('เกิดข้อผิดพลาด', 'error');
 }
 
 async function loadAdminLogsSummary() {

@@ -1112,6 +1112,8 @@ textarea {
 .admin-table th { background: #f8f9fa; font-weight: 600; color: #555; position: sticky; top: 0; }
 .admin-table tr:hover { background: #f5f7ff; }
 .admin-table select { padding: 4px 8px; border-radius: 6px; border: 1px solid #ddd; }
+.btn-warning { background: #fbbc04; color: #333; }
+.btn-warning:hover { background: #f0a800; }
 .text-success { color: #137333; font-weight: 600; }
 .text-warning { color: #e37400; font-weight: 600; }
 .att-admin-card { background: #f8f9fa; border-radius: 12px; padding: 16px; margin-bottom: 12px; border-left: 4px solid #1a73e8; }

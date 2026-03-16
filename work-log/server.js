@@ -632,6 +632,14 @@ app.get('/api/admin/logs/summary', requireAdmin, async (req, res) => {
   res.json(result.rows);
 });
 
+app.put('/api/admin/users/:id/reset-password', requireAdmin, async (req, res) => {
+  const { password } = req.body;
+  if (!password || password.length < 6) return res.status(400).json({ error: 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร' });
+  const hash = bcrypt.hashSync(password, 10);
+  await pool.query('UPDATE users SET password=$1 WHERE id=$2', [hash, req.params.id]);
+  res.json({ success: true });
+});
+
 app.put('/api/admin/users/:id/role', requireAdmin, async (req, res) => {
   const { role } = req.body;
   if (!['user', 'admin', 'hr'].includes(role)) return res.status(400).json({ error: 'Role ไม่ถูกต้อง' });
