@@ -201,7 +201,8 @@
         <div id="attendance-status" class="attendance-status"></div>
 
         <div id="attendance-actions" class="attendance-actions">
-          <input type="file" id="attendance-photo" accept="image/*" capture="user" hidden>
+          <input type="file" id="attendance-camera" accept="image/*" capture="user" hidden>
+          <input type="file" id="attendance-file" accept="image/*" hidden>
 
           <button class="btn btn-lg btn-clock-in" id="btn-clock-in">
             <span class="clock-icon">🟢</span>
@@ -214,6 +215,10 @@
             <span>ลงเวลาออก</span>
             <small>ตั้งแต่ 16:30 น.</small>
           </button>
+
+          <p class="att-hint" id="att-skip-photo" style="display:none">
+            <a href="#" id="btn-att-skip-photo">ข้ามการถ่ายรูป (ใช้บนคอม)</a>
+          </p>
         </div>
 
         <div id="attendance-today" class="attendance-today"></div>

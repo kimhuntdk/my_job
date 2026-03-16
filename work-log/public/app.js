@@ -793,19 +793,35 @@ async function clockAction(type) {
 
 function captureAttendancePhoto() {
   return new Promise((resolve) => {
-    const input = document.getElementById('attendance-photo');
-    input.onchange = () => {
-      const file = input.files[0];
-      input.value = '';
-      if (file) {
-        compressImage(file, 800, 0.6).then(resolve);
-      } else {
-        resolve(null);
-      }
-    };
-    input.click();
-    // If user cancels, resolve with null after timeout
-    setTimeout(() => { if (!input.files.length) resolve(null); }, 60000);
+    // Check if mobile
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      // Mobile: open camera directly
+      const input = document.getElementById('attendance-camera');
+      input.onchange = () => {
+        const file = input.files[0];
+        input.value = '';
+        if (file) compressImage(file, 800, 0.6).then(resolve);
+        else resolve(null);
+      };
+      input.click();
+      setTimeout(() => { if (!input.files.length) resolve(null); }, 60000);
+    } else {
+      // Desktop: show choice dialog
+      const choice = confirm('ต้องการแนบรูปภาพไหม?\n\nกด OK = เลือกไฟล์รูป\nกด Cancel = ไม่แนบรูป');
+      if (!choice) return resolve(null);
+
+      const input = document.getElementById('attendance-file');
+      input.onchange = () => {
+        const file = input.files[0];
+        input.value = '';
+        if (file) compressImage(file, 800, 0.6).then(resolve);
+        else resolve(null);
+      };
+      input.click();
+      setTimeout(() => { if (!input.files.length) resolve(null); }, 60000);
+    }
   });
 }
 
